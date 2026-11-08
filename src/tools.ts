@@ -3,16 +3,14 @@ import { DEFAULT_CONFIG, LIGHT_META_KEY, PLAYER_META_KEY, TOOL_ID, TOOL_MODE_ID 
 import { createLightAt, getSceneItems } from "./repository";
 import { findRecordAt } from "./renderer";
 
-// Resolve the icon from the deployed extension page. This works both on
-// GitHub Pages project paths (/Sistema-Luzes/) and on localhost.
 const EXTENSION_ICON_URL = new URL("icon.svg", document.baseURI).href;
+type DragMode = "MOVE" | "RESIZE" | "ROTATE";
 
 let latestItems: any[] = [];
 let selectedId: string | null = null;
 let drag: {
   interaction: [((recipe: (draft: any) => void) => any), () => void];
-  item: any;
-  mode: "MOVE" | "RESIZE";
+  mode: DragMode;
   center: { x: number; y: number };
 } | null = null;
 
@@ -36,17 +34,31 @@ async function setSelected(id: string | null): Promise<void> {
   await OBR.player.setMetadata({ [PLAYER_META_KEY]: { ...current, selectedId: id } });
 }
 
-function managedItemAt(point: { x: number; y: number }): { item: any; record: any; resize: boolean } | null {
-  const hit = findRecordAt(latestItems, point, selectedId);
-  if (!hit) return null;
-  return { item: hit.record.item, record: hit.record, resize: hit.resize };
+function applyDrag(current: NonNullable<typeof drag>, pointerPosition: { x: number; y: number }) {
+  const [update] = current.interaction;
+  if (current.mode === "MOVE") {
+    update((draft: any) => { draft.position = pointerPosition; });
+  } else if (current.mode === "RESIZE") {
+    const radius = Math.max(24, Math.min(5000,
+      Math.hypot(pointerPosition.x - current.center.x, pointerPosition.y - current.center.y),
+    ));
+    update((draft: any) => {
+      draft.width = radius * 2;
+      draft.height = radius * 2;
+    });
+  } else {
+    const angle = ((Math.atan2(
+      pointerPosition.y - current.center.y,
+      pointerPosition.x - current.center.x,
+    ) * 180 / Math.PI) % 360 + 360) % 360;
+    update((draft: any) => { draft.rotation = angle; });
+  }
 }
 
-async function cancelDrag(): Promise<void> {
-  if (drag) {
-    drag.interaction[1]();
-    drag = null;
-  }
+function stopDrag(): void {
+  if (!drag) return;
+  drag.interaction[1]();
+  drag = null;
 }
 
 export async function registerLightTool(): Promise<void> {
@@ -59,14 +71,18 @@ export async function registerLightTool(): Promise<void> {
 
   await OBR.tool.createMode({
     id: TOOL_MODE_ID,
-    icons: [{ icon: EXTENSION_ICON_URL, label: "Selecionar / mover / criar luz", filter: { activeTools: [TOOL_ID] } }],
+    icons: [{
+      icon: EXTENSION_ICON_URL,
+      label: "Arraste a luz para mover; alças para tamanho e rotação",
+      filter: { activeTools: [TOOL_ID] },
+    }],
     cursors: [{ cursor: "crosshair" }],
     async onToolClick(_, event) {
       const role = await OBR.player.getRole();
       if (role !== "GM") return false;
       latestItems = await getSceneItems();
       await readSelected();
-      const found = managedItemAt(event.pointerPosition);
+      const found = findRecordAt(latestItems, event.pointerPosition, selectedId);
       if (found) {
         await setSelected(found.record.id);
       } else {
@@ -80,47 +96,28 @@ export async function registerLightTool(): Promise<void> {
       if (role !== "GM") return;
       latestItems = await getSceneItems();
       await readSelected();
-      const found = managedItemAt(event.pointerPosition);
-      if (!found || found.record.config.locked || found.record.config.linkedTokenId) return;
+      const found = findRecordAt(latestItems, event.pointerPosition, selectedId);
+      if (!found || found.record.config.locked) return;
+      // Token-attached lights stay attached; their offset is controlled by the token link.
+      if (found.record.config.linkedTokenId && found.mode === "MOVE") return;
       await setSelected(found.record.id);
-      const interaction = await OBR.interaction.startItemInteraction(found.item);
+      const interaction = await OBR.interaction.startItemInteraction(found.record.item);
       drag = {
         interaction,
-        item: found.item,
-        mode: found.resize ? "RESIZE" : "MOVE",
+        mode: found.mode,
         center: { ...found.record.position },
       };
     },
     onToolDragMove(_, event) {
-      if (!drag) return;
-      const [update] = drag.interaction;
-      if (drag.mode === "MOVE") {
-        update((draft: any) => {
-          draft.position = event.pointerPosition;
-        });
-      } else {
-        const radius = Math.max(24, Math.min(5000, Math.hypot(event.pointerPosition.x - drag!.center.x, event.pointerPosition.y - drag!.center.y)));
-        update((draft: any) => {
-          draft.width = radius * 2;
-          draft.height = radius * 2;
-        });
-      }
+      if (drag) applyDrag(drag, event.pointerPosition);
     },
     onToolDragEnd(_, event) {
       if (!drag) return;
-      const current = drag;
-      const [update, stop] = current.interaction;
-      if (current.mode === "MOVE") {
-        update((draft: any) => { draft.position = event.pointerPosition; });
-      } else {
-        const radius = Math.max(24, Math.min(5000, Math.hypot(event.pointerPosition.x - current.center.x, event.pointerPosition.y - current.center.y)));
-        update((draft: any) => { draft.width = radius * 2; draft.height = radius * 2; });
-      }
-      stop();
-      drag = null;
+      applyDrag(drag, event.pointerPosition);
+      stopDrag();
     },
     onToolDragCancel() {
-      void cancelDrag();
+      stopDrag();
     },
     async onKeyDown(_, event) {
       if (event.key !== "Delete" && event.key !== "Backspace") return;

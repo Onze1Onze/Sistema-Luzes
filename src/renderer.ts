@@ -5,9 +5,11 @@ import { animationLevel, finalLightColor, getLightRecords, isAnimated } from "./
 
 type Role = "GM" | "PLAYER";
 type AnyItem = any;
+type OverlayMode = "MOVE" | "RESIZE" | "ROTATE";
 
-const MAX_SOFT_SHADOW_LIGHTS = 24;
 const MAX_COLOR_EFFECTS = 64;
+const HANDLE_RADIUS = 11;
+const HANDLE_DISTANCE = 28;
 
 const SHADER = `
 uniform vec2 size;
@@ -15,96 +17,78 @@ uniform vec3 lightColor;
 uniform float intensity;
 uniform float opacity;
 uniform float falloff;
-uniform float pattern;
-uniform float speed;
-uniform float minLevel;
-uniform float maxLevel;
-uniform float frequency;
-uniform float irregularity;
-uniform float interval;
-uniform float phase;
-uniform float startedAt;
-uniform float time;
+uniform float modulation;
+uniform float rotation;
+uniform float beamAngle;
 uniform shader scene;
 uniform mat3 modelView;
-
-float noise1(float value) {
-  return fract(sin(value * 127.1 + phase * 311.7) * 43758.5453);
-}
-
-float animationFactor() {
-  float elapsed = max(0.0, time - startedAt) * speed;
-  float lo = min(minLevel, maxLevel);
-  float hi = max(minLevel, maxLevel);
-  float wave = 0.5 + 0.5 * sin(elapsed * 6.2831853);
-  float cycle = fract(elapsed * frequency);
-  float result = 1.0;
-
-  if (pattern > 0.5 && pattern < 1.5) {
-    result = cycle < 0.5 ? hi : lo;
-  } else if (pattern > 1.5 && pattern < 2.5) {
-    result = mix(lo, hi, wave);
-  } else if (pattern > 2.5 && pattern < 3.5) {
-    float n = noise1(floor(elapsed * frequency));
-    float w = 0.5 + 0.5 * sin(elapsed * frequency * 9.1 + phase);
-    result = mix(lo, hi, mix(0.5, n * 0.72 + w * 0.28, irregularity));
-  } else if (pattern > 3.5 && pattern < 4.5) {
-    bool isOn = cycle < 0.13 || (cycle > 0.27 && cycle < 0.40);
-    result = isOn ? hi : lo;
-  } else if (pattern > 4.5 && pattern < 5.5) {
-    result = mix(lo, hi, 0.5 + 0.5 * sin(elapsed * 1.8849556 + phase));
-  } else if (pattern > 5.5) {
-    float n = noise1(floor(elapsed / max(0.05, interval)));
-    result = mix(lo, hi, n);
-  }
-  return clamp(result, 0.0, 1.0);
-}
 
 half4 main(float2 coord) {
   vec2 local = coord / size * 2.0 - 1.0;
   float distanceFromCenter = length(local);
-  float fadeStart = clamp(0.02 + (1.0 - falloff) * 0.78, 0.02, 0.97);
-  float mask = 1.0 - smoothstep(fadeStart, 1.0, distanceFromCenter);
-  float radial = pow(clamp(mask, 0.0, 1.0), mix(1.0, 2.7, falloff));
-  float modulation = animationFactor();
-  float strength = clamp(intensity * opacity * modulation * radial, 0.0, 0.92);
+  float edge = 1.0 - smoothstep(0.72, 1.0, distanceFromCenter);
+  float diffuse = exp(-distanceFromCenter * distanceFromCenter * (2.0 + falloff * 3.5));
+  float core = exp(-distanceFromCenter * distanceFromCenter * 10.0);
+  float radial = edge * (0.30 + 0.70 * diffuse);
+
+  float cone = 1.0;
+  if (beamAngle < 359.5) {
+    const float PI = 3.14159265;
+    float fragmentAngle = atan(local.y, local.x);
+    float direction = radians(rotation);
+    float difference = abs(mod(fragmentAngle - direction + PI, 2.0 * PI) - PI);
+    float halfAngle = radians(beamAngle) * 0.5;
+    float feather = max(radians(2.0), radians(beamAngle * 0.12));
+    cone = 1.0 - smoothstep(max(0.0, halfAngle - feather), halfAngle + 0.0001, difference);
+  }
 
   vec2 scenePosition = (vec3(coord, 1.0) * modelView).xy;
   half4 base = scene.eval(scenePosition);
-  vec3 tint = clamp(lightColor * strength, 0.0, 0.92);
-  vec3 lit = 1.0 - (1.0 - base.rgb) * (1.0 - tint);
-  return half4(lit, base.a);
+  float strength = clamp(intensity * opacity * modulation * radial * cone, 0.0, 0.88);
+  vec3 sourceColor = lightColor * (0.78 + 0.30 * core);
+  vec3 lit = base.rgb + sourceColor * strength * (1.0 - base.rgb);
+  return half4(clamp(lit, 0.0, 1.0), base.a);
 }
 `;
 
-function patternNumber(type: LightConfig["animation"]["type"]): number {
-  return {
-    STATIC: 0,
-    BLINK: 1,
-    PULSE: 2,
-    FLICKER: 3,
-    EMERGENCY: 4,
-    OSCILLATE: 5,
-    CUSTOM: 6,
-  }[type];
+function normalizedAngle(angle: number): number {
+  return ((angle % 360) + 360) % 360;
 }
 
-function effectUniforms(config: LightConfig): any[] {
-  const color = finalLightColor(config);
+function pointAt(center: { x: number; y: number }, angle: number, distance: number) {
+  const radians = angle * Math.PI / 180;
+  return {
+    x: center.x + Math.cos(radians) * distance,
+    y: center.y + Math.sin(radians) * distance,
+  };
+}
+
+export function rotationHandlePosition(record: LightRecord) {
+  return pointAt(record.position, record.rotation, record.radius + HANDLE_DISTANCE);
+}
+
+export function resizeHandlePosition(record: LightRecord) {
+  return pointAt(record.position, record.rotation + 90, record.radius + HANDLE_DISTANCE);
+}
+
+// A standalone effect and a Shape overlay use the top-left of their bounds.
+// The shared anchor position intentionally represents the light centre.
+function effectTopLeft(record: LightRecord) {
+  return {
+    x: record.position.x - record.radius,
+    y: record.position.y - record.radius,
+  };
+}
+
+function effectUniforms(config: LightConfig, rotation: number, modulation: number): any[] {
   return [
-    { name: "lightColor", value: color },
+    { name: "lightColor", value: finalLightColor(config) },
     { name: "intensity", value: config.intensity },
     { name: "opacity", value: config.opacity },
     { name: "falloff", value: config.falloff },
-    { name: "pattern", value: patternNumber(config.animation.type) },
-    { name: "speed", value: config.animation.speed },
-    { name: "minLevel", value: config.animation.min },
-    { name: "maxLevel", value: config.animation.max },
-    { name: "frequency", value: config.animation.frequency },
-    { name: "irregularity", value: config.animation.irregularity },
-    { name: "interval", value: config.animation.interval },
-    { name: "phase", value: config.animation.phase },
-    { name: "startedAt", value: config.animation.startedAt },
+    { name: "modulation", value: modulation },
+    { name: "rotation", value: normalizedAngle(rotation) },
+    { name: "beamAngle", value: config.beamAngle },
   ];
 }
 
@@ -117,13 +101,18 @@ function localMeta(item: AnyItem): { sourceId: string; kind: string } | null {
   return data && typeof data.sourceId === "string" && typeof data.kind === "string" ? data : null;
 }
 
-function buildFogItem(record: LightRecord, visible: boolean, softness: number): AnyItem {
+function buildFogItem(record: LightRecord, visible: boolean): AnyItem {
+  const beamAngle = record.config.beamAngle;
+  const innerAngle = beamAngle >= 360 ? 360 : Math.max(0, beamAngle * 0.82);
   const builder = buildLight()
     .name(`SL/Fog/${record.config.name}`)
     .position(record.position)
+    .rotation(record.rotation)
     .attenuationRadius(record.radius)
-    .sourceRadius(softness)
+    .sourceRadius(record.config.softness)
     .falloff(record.config.falloff)
+    .innerAngle(innerAngle)
+    .outerAngle(beamAngle)
     .visible(visible)
     .locked(true)
     .disableHit(true)
@@ -136,11 +125,11 @@ function buildGlowItem(record: LightRecord, visible: boolean): AnyItem {
   return buildEffect()
     .name(`SL/Glow/${record.config.name}`)
     .effectType("STANDALONE")
-    .position(record.position)
+    .position(effectTopLeft(record))
     .width(record.radius * 2)
     .height(record.radius * 2)
     .sksl(SHADER)
-    .uniforms(effectUniforms(record.config))
+    .uniforms(effectUniforms(record.config, record.rotation, 1))
     .blendMode("SRC")
     .layer("POST_PROCESS")
     .visible(visible)
@@ -154,7 +143,7 @@ function buildSelectionRing(record: LightRecord): AnyItem {
   return buildShape()
     .name("SL/Selection")
     .shapeType("CIRCLE")
-    .position(record.position)
+    .position(effectTopLeft(record))
     .width(record.radius * 2)
     .height(record.radius * 2)
     .fillColor(record.config.color)
@@ -170,14 +159,16 @@ function buildSelectionRing(record: LightRecord): AnyItem {
     .build();
 }
 
-function buildSelectionHandle(record: LightRecord): AnyItem {
+function buildHandle(record: LightRecord, kind: "resize" | "rotate"): AnyItem {
+  const point = kind === "resize" ? resizeHandlePosition(record) : rotationHandlePosition(record);
+  const color = kind === "resize" ? "#eee2d2" : "#e5a45e";
   return buildShape()
-    .name("SL/Resize Handle")
+    .name(kind === "resize" ? "SL/Resize Handle" : "SL/Rotation Handle")
     .shapeType("CIRCLE")
-    .position({ x: record.position.x + record.radius, y: record.position.y })
-    .width(14)
-    .height(14)
-    .fillColor("#f0b36b")
+    .position({ x: point.x - HANDLE_RADIUS, y: point.y - HANDLE_RADIUS })
+    .width(HANDLE_RADIUS * 2)
+    .height(HANDLE_RADIUS * 2)
+    .fillColor(color)
     .fillOpacity(1)
     .strokeColor("#201713")
     .strokeOpacity(1)
@@ -185,7 +176,7 @@ function buildSelectionHandle(record: LightRecord): AnyItem {
     .layer("CONTROL")
     .locked(true)
     .disableHit(true)
-    .metadata({ [LOCAL_META_KEY]: { sourceId: record.id, kind: "handle" } })
+    .metadata({ [LOCAL_META_KEY]: { sourceId: record.id, kind } })
     .build();
 }
 
@@ -195,7 +186,6 @@ export class LightingRenderer {
   private selectedId: string | null = null;
   private scheduleHandle: number | null = null;
   private animationHandle: number | null = null;
-  private lastFogVisibility = new Map<string, boolean>();
   private localItems: AnyItem[] = [];
 
   setContext(items: AnyItem[], role: Role, selectedId: string | null): void {
@@ -206,7 +196,7 @@ export class LightingRenderer {
     this.scheduleHandle = window.setTimeout(() => {
       this.scheduleHandle = null;
       void this.reconcile();
-    }, 45);
+    }, 16);
   }
 
   async reconcile(): Promise<void> {
@@ -223,39 +213,36 @@ export class LightingRenderer {
 
       const desired = new Set<string>();
       const additions: AnyItem[] = [];
-      const updates: { item: AnyItem; record: LightRecord; visible: boolean; softness: number }[] = [];
-      let softCount = 0;
+      const updates: { item: AnyItem; record: LightRecord; visible: boolean }[] = [];
       const effectRecords = [...records].sort((a, b) => b.config.intensity * b.radius - a.config.intensity * a.radius);
       const effectEligible = new Set(effectRecords.slice(0, MAX_COLOR_EFFECTS).map((record) => record.id));
 
       for (const record of records) {
         const visible = isVisibleForRole(record.config, this.role);
-        const softness = record.config.softness > 0 && softCount < MAX_SOFT_SHADOW_LIGHTS ? record.config.softness : 0;
-        if (softness > 0) softCount++;
         desired.add(`${record.id}:fog`);
         desired.add(`${record.id}:glow`);
         const fog = bySourceKind.get(`${record.id}:fog`);
         const glow = bySourceKind.get(`${record.id}:glow`);
-        if (fog) updates.push({ item: fog, record, visible, softness });
-        else additions.push(buildFogItem(record, visible, softness));
-        if (glow) updates.push({ item: glow, record, visible: visible && effectEligible.has(record.id), softness });
+        if (fog) updates.push({ item: fog, record, visible });
+        else additions.push(buildFogItem(record, visible));
+        if (glow) updates.push({ item: glow, record, visible: visible && effectEligible.has(record.id) });
         else additions.push(buildGlowItem(record, visible && effectEligible.has(record.id)));
       }
 
       const selected = this.role === "GM" ? records.find((record) => record.id === this.selectedId) : undefined;
       if (selected) {
         desired.add(`${selected.id}:selection`);
-        desired.add(`${selected.id}:handle`);
+        desired.add(`${selected.id}:resize`);
+        desired.add(`${selected.id}:rotate`);
         const ring = bySourceKind.get(`${selected.id}:selection`);
-        const handle = bySourceKind.get(`${selected.id}:handle`);
-        if (ring) {
-          const meta = localMeta(ring);
-          if (meta) updates.push({ item: ring, record: selected, visible: true, softness: 0 });
-        } else additions.push(buildSelectionRing(selected));
-        if (handle) {
-          const meta = localMeta(handle);
-          if (meta) updates.push({ item: handle, record: selected, visible: true, softness: 0 });
-        } else additions.push(buildSelectionHandle(selected));
+        const resize = bySourceKind.get(`${selected.id}:resize`);
+        const rotate = bySourceKind.get(`${selected.id}:rotate`);
+        if (ring) updates.push({ item: ring, record: selected, visible: true });
+        else additions.push(buildSelectionRing(selected));
+        if (resize) updates.push({ item: resize, record: selected, visible: true });
+        else additions.push(buildHandle(selected, "resize"));
+        if (rotate) updates.push({ item: rotate, record: selected, visible: true });
+        else additions.push(buildHandle(selected, "rotate"));
       }
 
       const stale = managed.filter((item) => {
@@ -267,48 +254,71 @@ export class LightingRenderer {
       const fogUpdates = updates.filter((entry) => localMeta(entry.item)?.kind === "fog");
       const glowUpdates = updates.filter((entry) => localMeta(entry.item)?.kind === "glow");
       const ringUpdates = updates.filter((entry) => localMeta(entry.item)?.kind === "selection");
-      const handleUpdates = updates.filter((entry) => localMeta(entry.item)?.kind === "handle");
+      const resizeUpdates = updates.filter((entry) => localMeta(entry.item)?.kind === "resize");
+      const rotateUpdates = updates.filter((entry) => localMeta(entry.item)?.kind === "rotate");
+
       if (fogUpdates.length) await OBR.scene.local.updateItems(fogUpdates.map((entry) => entry.item), (draft: any[]) => {
         for (const item of draft) {
           const meta = localMeta(item);
           const entry = fogUpdates.find((candidate) => localMeta(candidate.item)?.sourceId === meta?.sourceId);
           if (!entry) continue;
           item.position = entry.record.position;
+          item.rotation = entry.record.rotation;
           item.attenuationRadius = entry.record.radius;
-          item.sourceRadius = entry.softness;
+          item.sourceRadius = entry.record.config.softness;
           item.falloff = entry.record.config.falloff;
+          item.innerAngle = entry.record.config.beamAngle >= 360 ? 360 : Math.max(0, entry.record.config.beamAngle * 0.82);
+          item.outerAngle = entry.record.config.beamAngle;
           item.visible = entry.visible;
         }
       });
+
       if (glowUpdates.length) await OBR.scene.local.updateItems(glowUpdates.map((entry) => entry.item), (draft: any[]) => {
         for (const item of draft) {
           const meta = localMeta(item);
           const entry = glowUpdates.find((candidate) => localMeta(candidate.item)?.sourceId === meta?.sourceId);
           if (!entry) continue;
-          item.position = entry.record.position;
+          item.position = effectTopLeft(entry.record);
           item.width = entry.record.radius * 2;
           item.height = entry.record.radius * 2;
-          item.uniforms = effectUniforms(entry.record.config);
+          item.uniforms = effectUniforms(entry.record.config, entry.record.rotation, 1);
           item.visible = entry.visible && effectEligible.has(entry.record.id);
         }
       });
+
       if (ringUpdates.length) await OBR.scene.local.updateItems(ringUpdates.map((entry) => entry.item), (draft: any[]) => {
         for (const item of draft) {
           const meta = localMeta(item);
           const entry = ringUpdates.find((candidate) => localMeta(candidate.item)?.sourceId === meta?.sourceId);
           if (!entry) continue;
-          item.position = entry.record.position;
+          item.position = effectTopLeft(entry.record);
           item.width = entry.record.radius * 2;
           item.height = entry.record.radius * 2;
         }
       });
-      if (handleUpdates.length) await OBR.scene.local.updateItems(handleUpdates.map((entry) => entry.item), (draft: any[]) => {
+
+      if (resizeUpdates.length) await OBR.scene.local.updateItems(resizeUpdates.map((entry) => entry.item), (draft: any[]) => {
         for (const item of draft) {
           const meta = localMeta(item);
-          const entry = handleUpdates.find((candidate) => localMeta(candidate.item)?.sourceId === meta?.sourceId);
-          if (entry) item.position = { x: entry.record.position.x + entry.record.radius, y: entry.record.position.y };
+          const entry = resizeUpdates.find((candidate) => localMeta(candidate.item)?.sourceId === meta?.sourceId);
+          if (entry) {
+            const point = resizeHandlePosition(entry.record);
+            item.position = { x: point.x - HANDLE_RADIUS, y: point.y - HANDLE_RADIUS };
+          }
         }
       });
+
+      if (rotateUpdates.length) await OBR.scene.local.updateItems(rotateUpdates.map((entry) => entry.item), (draft: any[]) => {
+        for (const item of draft) {
+          const meta = localMeta(item);
+          const entry = rotateUpdates.find((candidate) => localMeta(candidate.item)?.sourceId === meta?.sourceId);
+          if (entry) {
+            const point = rotationHandlePosition(entry.record);
+            item.position = { x: point.x - HANDLE_RADIUS, y: point.y - HANDLE_RADIUS };
+          }
+        }
+      });
+
       if (additions.length) await OBR.scene.local.addItems(additions);
       this.localItems = await OBR.scene.local.getItems();
       this.refreshAnimationScheduler(records);
@@ -318,44 +328,48 @@ export class LightingRenderer {
   }
 
   private refreshAnimationScheduler(records: LightRecord[]): void {
-    const needsScheduler = records.some((record) => {
-      const type = record.config.animation.type;
-      return isAnimated(record.config) && (type === "BLINK" || type === "EMERGENCY" || type === "FLICKER" || type === "CUSTOM");
-    });
+    const needsScheduler = records.some((record) => isAnimated(record.config));
     if (!needsScheduler && this.animationHandle !== null) {
       window.clearInterval(this.animationHandle);
       this.animationHandle = null;
       return;
     }
     if (!needsScheduler || this.animationHandle !== null) return;
+    this.animationHandle = window.setInterval(() => this.tickAnimations(), 1000 / 30);
+  }
 
-    this.animationHandle = window.setInterval(() => {
-      const now = Date.now() / 1000;
-      const currentRecords = getLightRecords(this.latestItems);
-      const updates = currentRecords.filter((record) => {
-        if (!isVisibleForRole(record.config, this.role)) return false;
-        const type = record.config.animation.type;
-        if (!(type === "BLINK" || type === "EMERGENCY" || type === "FLICKER" || type === "CUSTOM")) return false;
-        const shouldShow = animationLevel(record.config.animation, now) > 0.08;
-        const previous = this.lastFogVisibility.get(record.id);
-        this.lastFogVisibility.set(record.id, shouldShow);
-        return previous === undefined || previous !== shouldShow;
-      });
-      if (!updates.length) return;
-      const updateById = new Map(updates.map((record) => [record.id, animationLevel(record.config.animation, now) > 0.08]));
-      const fogItems = this.localItems.filter((item) => {
+  private tickAnimations(): void {
+    const now = Date.now() / 1000;
+    const active = new Map(
+      getLightRecords(this.latestItems)
+        .filter((record) => isAnimated(record.config) && isVisibleForRole(record.config, this.role))
+        .map((record) => [record.id, {
+          record,
+          level: animationLevel(record.config.animation, now),
+        }]),
+    );
+    if (!active.size) return;
+
+    const animatedItems = this.localItems.filter((item) => {
+      const meta = localMeta(item);
+      return !!meta && active.has(meta.sourceId) && (meta.kind === "glow" || meta.kind === "fog");
+    });
+    if (!animatedItems.length) return;
+
+    void OBR.scene.local.updateItems(animatedItems, (draft: any[]) => {
+      for (const item of draft) {
         const meta = localMeta(item);
-        return meta?.kind === "fog" && updateById.has(meta.sourceId);
-      });
-      if (fogItems.length) {
-        void OBR.scene.local.updateItems(fogItems, (draft: any[]) => {
-          for (const item of draft) {
-            const meta = localMeta(item);
-            if (meta) item.visible = updateById.get(meta.sourceId) ?? true;
-          }
-        });
+        const entry = meta ? active.get(meta.sourceId) : undefined;
+        if (!meta || !entry) continue;
+        if (meta.kind === "glow") {
+          item.uniforms = effectUniforms(entry.record.config, entry.record.rotation, entry.level);
+        } else if (meta.kind === "fog") {
+          item.attenuationRadius = entry.record.radius * (0.92 + entry.level * 0.08);
+        }
       }
-    }, 110);
+    }).catch((error: unknown) => {
+      console.warn("[Sistema de Luzes] Falha ao atualizar animação:", error);
+    });
   }
 
   dispose(): void {
@@ -366,17 +380,27 @@ export class LightingRenderer {
   }
 }
 
-export function findRecordAt(items: AnyItem[], point: { x: number; y: number }, selectedId: string | null): { record: LightRecord; resize: boolean } | null {
+export function findRecordAt(
+  items: AnyItem[],
+  point: { x: number; y: number },
+  selectedId: string | null,
+): { record: LightRecord; mode: OverlayMode } | null {
   const records = getLightRecords(items);
+  const selected = records.find((record) => record.id === selectedId);
+  if (selected) {
+    const rotationPoint = rotationHandlePosition(selected);
+    const resizePoint = resizeHandlePosition(selected);
+    const rotationDistance = Math.hypot(point.x - rotationPoint.x, point.y - rotationPoint.y);
+    const resizeDistance = Math.hypot(point.x - resizePoint.x, point.y - resizePoint.y);
+    if (rotationDistance <= HANDLE_RADIUS * 2) return { record: selected, mode: "ROTATE" };
+    if (resizeDistance <= HANDLE_RADIUS * 2) return { record: selected, mode: "RESIZE" };
+  }
+
   let best: { record: LightRecord; distance: number } | null = null;
   for (const record of records) {
     const distance = Math.hypot(point.x - record.position.x, point.y - record.position.y);
-    const innerHit = distance <= Math.max(38, Math.min(record.radius, 180));
-    const edgeHit = record.id === selectedId && Math.abs(distance - record.radius) <= Math.max(34, record.radius * 0.12);
-    if (!innerHit && !edgeHit) continue;
+    if (distance > record.radius + HANDLE_DISTANCE + HANDLE_RADIUS) continue;
     if (!best || distance < best.distance) best = { record, distance };
   }
-  if (!best) return null;
-  const resize = best.record.id === selectedId && Math.abs(best.distance - best.record.radius) < Math.max(34, best.record.radius * 0.12);
-  return { record: best.record, resize };
+  return best ? { record: best.record, mode: "MOVE" } : null;
 }

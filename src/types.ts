@@ -37,7 +37,6 @@ export interface LightConfig {
   falloff: number;
   softness: number;
   temperature: number;
-  beamAngle: number;
   enabled: boolean;
   locked: boolean;
   visibility: VisibilityMode;
@@ -63,7 +62,6 @@ export interface LightRecord {
   item: any;
   config: LightConfig;
   radius: number;
-  rotation: number;
   position: { x: number; y: number };
 }
 
@@ -75,7 +73,6 @@ export const DEFAULT_CONFIG: LightConfig = {
   falloff: 0.72,
   softness: 0,
   temperature: 4200,
-  beamAngle: 360,
   enabled: true,
   locked: false,
   visibility: "ALL",
