@@ -53,6 +53,8 @@ export async function updateLightRadius(id: string, radius: number): Promise<voi
   const safeRadius = Math.max(24, Math.min(5000, Number.isFinite(radius) ? radius : 240));
   await OBR.scene.items.updateItems([id], (items: SceneItem[]) => {
     if (!items[0]) return;
+    // This extension stores the authoritative light radius on the hidden
+    // scene shape. getLightRecords() reads width/2 from this same item.
     items[0].width = safeRadius * 2;
     items[0].height = safeRadius * 2;
   });

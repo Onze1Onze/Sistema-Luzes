@@ -117,6 +117,9 @@ async function beginDrag(event: any): Promise<void> {
     let record: any;
     let mode: LightControlMode;
 
+    // Local CONTROL labels are not reported as event.target on every
+    // mobile/browser combination. Keep the metadata path, but always fall
+    // back to the same geometric hit-test used by the visible controls.
     if (targetButton) {
       record = getLightRecords(latestItems).find((entry) => entry.id === targetButton.recordId);
       mode = targetButton.mode;

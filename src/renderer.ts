@@ -164,16 +164,18 @@ function buildSelectionRing(record: LightRecord): AnyItem {
 }
 
 function buildControlButton(record: LightRecord, mode: LightControlMode, viewScale: number): AnyItem {
+  // Use plain ASCII labels instead of uncommon Unicode glyphs. Some mobile
+  // fonts rendered the previous symbols as replacement squares with an X.
   const label = mode === "MOVE" ? "MOVER" : mode === "ROTATE" ? "GIRAR" : "RAIO";
   const background = mode === "MOVE" ? "#282a30" : mode === "ROTATE" ? "#70482f" : "#334c54";
-  const border = mode === "MOVE" ? "#8b919b" : mode === "ROTATE" ? "#e0a36e" : "#7db8c6";
+  const border = mode === "MOVE" ? "#a8adb7" : mode === "ROTATE" ? "#efb47d" : "#8bc7d5";
   return buildLabel()
     .name(`SL/Control/${mode}/${record.config.name}`)
     .plainText(label)
     .width(BUTTON_WIDTH)
     .height(BUTTON_HEIGHT)
-    .fontFamily("Arial")
-    .fontSize(10)
+    .fontFamily("sans-serif")
+    .fontSize(11)
     .fontWeight(700)
     .textAlign("CENTER")
     .textAlignVertical("MIDDLE")
@@ -185,6 +187,7 @@ function buildControlButton(record: LightRecord, mode: LightControlMode, viewSca
     .backgroundColor(background)
     .backgroundOpacity(0.98)
     .cornerRadius(8)
+    .description(label)
     .position(controlButtonPosition(record, mode, viewScale))
     .layer("CONTROL")
     .locked(true)
