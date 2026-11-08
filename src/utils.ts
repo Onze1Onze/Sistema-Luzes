@@ -30,7 +30,7 @@ export function validateConfig(value: unknown): LightConfig {
       speed: clamp(finite(animation.speed, 1), 0.05, 8),
       min: clamp(finite(animation.min, 0.25), 0, 1),
       max: clamp(finite(animation.max, 1), 0, 1),
-      frequency: clamp(finite(animation.frequency, 4), 0.1, 30),
+      frequency: clamp(finite(animation.frequency, 1), 0.1, 30),
       irregularity: clamp(finite(animation.irregularity, 0.5), 0, 1),
       interval: clamp(finite(animation.interval, 0.5), 0.05, 5),
       phase: finite(animation.phase, 0),
@@ -98,8 +98,9 @@ export function animationLevel(animation: AnimationConfig, unixSeconds: number):
   const lo = Math.min(animation.min, animation.max);
   const hi = Math.max(animation.min, animation.max);
   const fract = (value: number) => value - Math.floor(value);
+  const clamp01 = (value: number) => clamp(value, 0, 1);
   const smooth = (value: number) => {
-    const t = clamp(value, 0, 1);
+    const t = clamp01(value);
     return t * t * (3 - 2 * t);
   };
   const hash = (step: number) => fract(
@@ -116,36 +117,42 @@ export function animationLevel(animation: AnimationConfig, unixSeconds: number):
     const envelope = 1 - smooth(distance / width);
     return envelope * envelope;
   };
+  const frequency = animation.frequency;
 
   let level = 1;
   switch (animation.type) {
     case "BLINK": {
-      const wave = 0.5 + 0.5 * Math.sin(elapsed * animation.frequency * Math.PI * 2);
-      level = smooth((wave - 0.25) / 0.5);
+      const wave = 0.5 + 0.5 * Math.sin(elapsed * frequency * Math.PI * 2 + animation.phase);
+      level = smooth((wave - 0.20) / 0.60);
       break;
     }
     case "PULSE":
-      level = 0.5 - 0.5 * Math.cos(elapsed * Math.PI * 2);
+      level = 0.5 - 0.5 * Math.cos(elapsed * frequency * Math.PI * 2 + animation.phase);
       break;
     case "FLICKER": {
-      const slow = smoothNoise(elapsed * animation.frequency * 0.72);
-      const fast = smoothNoise(elapsed * animation.frequency * 2.15 + animation.phase * 0.37);
-      const flutter = 0.5 + 0.5 * Math.sin(elapsed * animation.frequency * 6.1 + animation.phase);
-      level = 0.22 + 0.78 * (slow * 0.52 + fast * 0.34 + flutter * 0.14);
+      const slow = smoothNoise(elapsed * frequency * 0.72);
+      const fast = smoothNoise(elapsed * frequency * 2.15 + animation.phase * 0.37);
+      const flutter = 0.5 + 0.5 * Math.sin(elapsed * frequency * 6.1 + animation.phase);
+      const texture = slow * 0.52 + fast * 0.34 + flutter * 0.14;
+      const swing = 0.12 + animation.irregularity * 0.78;
+      level = clamp01(0.74 + (texture - 0.5) * swing * 2);
       break;
     }
     case "EMERGENCY": {
-      const cycle = fract(elapsed * animation.frequency);
+      const cycle = fract(elapsed * frequency + fract(animation.phase * 0.001));
       const flash = Math.max(pulse(cycle, 0.14, 0.12), pulse(cycle, 0.37, 0.12));
       level = 0.035 + 0.965 * flash;
       break;
     }
     case "OSCILLATE":
-      level = 0.5 + 0.5 * Math.sin(elapsed * Math.PI * 1.2 + animation.phase);
+      level = 0.5 + 0.5 * Math.sin(elapsed * frequency * Math.PI * 2 + animation.phase);
       break;
-    case "CUSTOM":
-      level = smoothNoise(elapsed / Math.max(0.05, animation.interval) + animation.phase * 0.11);
+    case "CUSTOM": {
+      const noise = smoothNoise(elapsed / Math.max(0.05, animation.interval) + animation.phase * 0.11);
+      const swing = 0.25 + animation.irregularity * 0.75;
+      level = clamp01(0.5 + (noise - 0.5) * swing * 2);
       break;
+    }
     default:
       level = 1;
   }

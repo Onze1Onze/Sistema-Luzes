@@ -9,6 +9,7 @@ const base = (patch: Partial<LightPreset["config"]>): LightPreset["config"] => (
   falloff: patch.falloff ?? DEFAULT_CONFIG.falloff,
   softness: patch.softness ?? DEFAULT_CONFIG.softness,
   temperature: patch.temperature ?? DEFAULT_CONFIG.temperature,
+  beamAngle: patch.beamAngle ?? DEFAULT_CONFIG.beamAngle,
   enabled: patch.enabled ?? DEFAULT_CONFIG.enabled,
   animation: { ...DEFAULT_CONFIG.animation, ...(patch.animation ?? {}) },
 });
