@@ -2,12 +2,22 @@
 
 Extensão de iluminação colorida e animada para mesas de RPG, com interface vertical compacta e identidade visual de arquivo tático/investigativo inspirada em Ordem Paranormal.
 
+## Instalação no Owlbear Rodeo
+
+Depois que o workflow **Deploy Owlbear extension to GitHub Pages** concluir com sucesso, adicione ao Owlbear este manifesto publicado:
+
+**https://onze1onze.github.io/Sistema-Luzes/manifest.json**
+
+Não use o endereço `raw.githubusercontent.com` para instalar a extensão. Ele entrega arquivos-fonte individuais e não serve o site compilado que o Owlbear precisa abrir no popover.
+
+O repositório deve estar configurado em **Settings → Pages → Build and deployment → Source: GitHub Actions**. O workflow compila o projeto e publica somente a pasta `dist/`. Cada alteração enviada para `main` dispara uma nova publicação.
+
 ## Estado da implementação
 
 Este repositório contém uma implementação inicial funcional da arquitetura de luzes. A extensão usa o SDK oficial `@owlbear-rodeo/sdk` 3.1.0 e separa a configuração compartilhada da renderização local:
 
 - Cada luz é um `SHAPE` invisível, compartilhado na cena. Seu `metadata` namespaced guarda cor, raio, intensidade, animação, visibilidade e vínculo ao Token. Por isso, a configuração sobrevive a recarregamentos e é sincronizada pelo próprio Owlbear.
-- Cada cliente reconstrói localmente um `LIGHT` oficial para interagir com o Dynamic Fog e um `EFFECT` local para o filtro de cor em SkSL.
+- Cada cliente reconstrói localmente um `LIGHT` oficial para interagir com o sistema Dynamic Fog e um `EFFECT` local para o filtro de cor em SkSL.
 - Os efeitos de cor usam `POST_PROCESS` e consultam `scene`, seguindo o mecanismo oficial de pós-processamento do Owlbear.
 - A ferramenta personalizada usa `OBR.interaction.startItemInteraction` para mover e redimensionar a forma compartilhada, aproveitando a interpolação de rede do Owlbear.
 - O limite de efeitos coloridos e de fontes com suavização de sombra evita que dezenas de shaders e sombras suaves degradem toda a mesa.
@@ -23,17 +33,16 @@ Este repositório contém uma implementação inicial funcional da arquitetura d
 - Visibilidade visual para todos ou apenas para o Mestre.
 - Painel deliberadamente vertical, com controles empilhados.
 
-## Instalação e desenvolvimento
+## Desenvolvimento
 
 Requisitos: Node.js 20 ou superior e npm.
 
 1. Execute `npm install`.
 2. Execute `npm run dev` para desenvolvimento.
 3. Execute `npm run build` para gerar `dist/`.
-4. Publique a pasta `dist/` em um host estático HTTPS.
-5. Cadastre o `manifest.json` no Owlbear Rodeo, apontando para o host que contém o build.
+4. Para uso público, publique `dist/` em um host estático HTTPS. Neste repositório, o workflow faz isso pelo GitHub Pages.
 
-O `vite.config.ts` está configurado para publicação em GitHub Pages no caminho `/Sistema-Luzes/`. O workflow em `.github/workflows/deploy.yml` faz build e deploy quando a branch `main` recebe alterações. A primeira publicação pode exigir habilitar GitHub Pages com a origem **GitHub Actions** nas configurações do repositório.
+O Vite está configurado para publicar no caminho `/Sistema-Luzes/`. Os caminhos de `icon` e `popover` do manifesto são URLs HTTPS absolutas para evitar que o Owlbear resolva `index.html` ou `icon.svg` na raiz errada do domínio. O mesmo manifesto fica em `manifest.json` e `public/manifest.json`; mantenha as duas cópias sincronizadas.
 
 ## Controles
 
@@ -70,6 +79,7 @@ Não foi possível localizar uma API pública documentada para uma extensão cha
 ## Referências técnicas
 
 - [Owlbear Rodeo — documentação de extensões](https://docs.owlbear.rodeo/extensions/)
+- [Manifest](https://docs.owlbear.rodeo/extensions/reference/manifest/)
 - [Scene Items API](https://docs.owlbear.rodeo/extensions/apis/scene/items/)
 - [Local Items API](https://docs.owlbear.rodeo/extensions/apis/scene/local/)
 - [Interaction API](https://docs.owlbear.rodeo/extensions/apis/interaction/)

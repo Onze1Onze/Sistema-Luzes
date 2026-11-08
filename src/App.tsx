@@ -249,7 +249,7 @@ export default function App() {
       <span className={`role-tag ${role === "GM" ? "gm" : "player"}`}>{role === "GM" ? "MESTRE" : "AGENTE"}</span>
     </header>
 
-    <div className="status-line"><span className="status-dot" />{status}<span className="status-right">v1.0.0 / OR</span></div>
+    <div className="status-line"><span className="status-dot" />{status}<span className="status-right">v1.0.1 / OR</span></div>
 
     <Section title="FONTES DE LUZ" right={<span className="count">{records.length.toString().padStart(2, "0")}</span>}>
       {role === "GM" && <button className="primary-button" onClick={createLight}><span>＋</span> NOVA LUZ NO CENTRO</button>}
@@ -322,6 +322,6 @@ export default function App() {
 
     {role === "PLAYER" && <div className="player-notice">VISUALIZAÇÃO DE AGENTE — as fontes de luz disponíveis na cena são renderizadas automaticamente neste dispositivo.</div>}
 
-    <footer className="footer"><span>ARQUIVO: SL-04 / OPERAÇÃO NOTURNA</span><span>BUILD 1.0.0</span></footer>
+    <footer className="footer"><span>ARQUIVO: SL-04 / OPERAÇÃO NOTURNA</span><span>BUILD 1.0.1</span></footer>
   </main>;
 }

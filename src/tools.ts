@@ -2,7 +2,10 @@ import OBR from "@owlbear-rodeo/sdk";
 import { DEFAULT_CONFIG, LIGHT_META_KEY, PLAYER_META_KEY, TOOL_ID, TOOL_MODE_ID } from "./types";
 import { createLightAt, getSceneItems } from "./repository";
 import { findRecordAt } from "./renderer";
-import { getLightRecords } from "./utils";
+
+// Resolve the icon from the deployed extension page. This works both on
+// GitHub Pages project paths (/Sistema-Luzes/) and on localhost.
+const EXTENSION_ICON_URL = new URL("icon.svg", document.baseURI).href;
 
 let latestItems: any[] = [];
 let selectedId: string | null = null;
@@ -49,14 +52,14 @@ async function cancelDrag(): Promise<void> {
 export async function registerLightTool(): Promise<void> {
   await OBR.tool.create({
     id: TOOL_ID,
-    icons: [{ icon: "/icon.svg", label: "Sistema de Luzes" }],
+    icons: [{ icon: EXTENSION_ICON_URL, label: "Sistema de Luzes" }],
     defaultMode: TOOL_MODE_ID,
     disabled: { roles: ["PLAYER"] },
   });
 
   await OBR.tool.createMode({
     id: TOOL_MODE_ID,
-    icons: [{ icon: "/icon.svg", label: "Selecionar / mover / criar luz", filter: { activeTools: [TOOL_ID] } }],
+    icons: [{ icon: EXTENSION_ICON_URL, label: "Selecionar / mover / criar luz", filter: { activeTools: [TOOL_ID] } }],
     cursors: [{ cursor: "crosshair" }],
     async onToolClick(_, event) {
       const role = await OBR.player.getRole();
