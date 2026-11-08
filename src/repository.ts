@@ -25,10 +25,11 @@ export async function createLightAt(
     .position(position)
     .width(480)
     .height(480)
+    .rotation(0)
     .fillOpacity(0)
     .strokeOpacity(0)
     .visible(false)
-    .locked(true)
+    .locked(false)
     .disableHit(true)
     .metadata({ [LIGHT_META_KEY]: safe })
     .build();
@@ -57,6 +58,13 @@ export async function updateLightRadius(id: string, radius: number): Promise<voi
   });
 }
 
+export async function updateLightRotation(id: string, rotation: number): Promise<void> {
+  const normalized = ((Number.isFinite(rotation) ? rotation : 0) % 360 + 360) % 360;
+  await OBR.scene.items.updateItems([id], (items: SceneItem[]) => {
+    if (items[0]) items[0].rotation = normalized;
+  });
+}
+
 export async function deleteLight(id: string): Promise<void> {
   await OBR.scene.items.deleteItems([id]);
 }
@@ -75,6 +83,7 @@ export async function duplicateLight(item: SceneItem): Promise<string | null> {
   const position = { x: item.position.x + 28, y: item.position.y + 28 };
   const id = await createLightAt(position, duplicate);
   await updateLightRadius(id, Math.max(24, item.width / 2));
+  await updateLightRotation(id, Number(item.rotation) || 0);
   return id;
 }
 

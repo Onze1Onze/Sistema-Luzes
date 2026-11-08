@@ -4,7 +4,7 @@ import type { AnimationType, LightConfig, LightPreset, LightRecord, TokenOption 
 import { BUILT_IN_PRESETS } from "./presets";
 import { DEFAULT_CONFIG, LIGHT_META_KEY, PLAYER_META_KEY, TOOL_ID, TOOL_MODE_ID } from "./types";
 import { getLightRecords, validateConfig } from "./utils";
-import { applyPreset, createLightAt, deleteLight, duplicateLight, getSceneItems, updateLight, updateLightRadius } from "./repository";
+import { applyPreset, createLightAt, deleteLight, duplicateLight, getSceneItems, updateLight, updateLightRadius, updateLightRotation } from "./repository";
 import { LightingRenderer } from "./renderer";
 
 const renderer = new LightingRenderer();
@@ -56,13 +56,15 @@ export default function App() {
 
   const [config, setConfig] = useState<LightConfig>(DEFAULT_CONFIG);
   const [radius, setRadius] = useState(240);
+  const [rotation, setRotation] = useState(0);
 
   useEffect(() => {
     if (selected) {
       setConfig(validateConfig(selected.config));
       setRadius(selected.radius);
+      setRotation(selected.rotation);
     }
-  }, [selectedId, selected?.item?.metadata, selected?.radius]);
+  }, [selectedId, selected?.item?.metadata, selected?.radius, selected?.rotation]);
 
   useEffect(() => {
     renderer.setContext(items, role, selectedId);
@@ -169,6 +171,12 @@ export default function App() {
     if (selected) void updateLightRadius(selected.id, safe);
   }, [selected]);
 
+  const changeRotation = useCallback((value: number) => {
+    const safe = ((Math.round(value) % 360) + 360) % 360;
+    setRotation(safe);
+    if (selected) void updateLightRotation(selected.id, safe);
+  }, [selected]);
+
   const createLight = useCallback(async () => {
     try {
       const position = await OBR.viewport.getPosition();
@@ -248,7 +256,7 @@ export default function App() {
       <span className={`role-tag ${role === "GM" ? "gm" : "player"}`}>{role === "GM" ? "MESTRE" : "AGENTE"}</span>
     </header>
 
-    <div className="status-line"><span className="status-dot" />{status}<span className="status-right">v1.0.1 / OR</span></div>
+    <div className="status-line"><span className="status-dot" />{status}<span className="status-right">v1.1.0 / OR</span></div>
 
     <Section title="FONTES DE LUZ" right={<span className="count">{records.length.toString().padStart(2, "0")}</span>}>
       {role === "GM" && <button className="primary-button" onClick={createLight}><span>＋</span> NOVA LUZ NO CENTRO</button>}
@@ -260,7 +268,7 @@ export default function App() {
           <span className={`light-state ${record.config.enabled ? "on" : "off"}`}>{record.config.enabled ? "●" : "○"}</span>
         </button>)}
       </div>
-      {role === "GM" && <div className="tool-hint">Ferramenta SL no mapa: clique vazio para criar · arraste uma luz para mover · arraste a borda para redimensionar.</div>}
+      {role === "GM" && <div className="tool-hint">Ferramenta SL: arraste o círculo para mover; alça clara para tamanho; alça âmbar para rotação.</div>}
     </Section>
 
     {role === "GM" && selected && <>
@@ -282,6 +290,8 @@ export default function App() {
         <Range label="INTENSIDADE" value={config.intensity} min={0} max={2.5} onChange={(value) => patchConfig({ intensity: value })} />
         <Range label="OPACIDADE" value={config.opacity} min={0} max={1} onChange={(value) => patchConfig({ opacity: value })} />
         <Range label="RAIO" value={radius} min={24} max={2000} step={8} suffix=" u" onChange={changeRadius} />
+        <Range label="ROTAÇÃO" value={rotation} min={0} max={359} step={1} suffix="°" onChange={changeRotation} />
+        <Range label="ABERTURA DO FACHO" value={config.beamAngle} min={12} max={360} step={2} suffix="°" onChange={(value) => patchConfig({ beamAngle: value })} />
         <Range label="FALLOFF" value={config.falloff} min={0} max={1} onChange={(value) => patchConfig({ falloff: value })} />
         <Range label="SUAVIDADE DE SOMBRA" value={config.softness} min={0} max={240} step={4} suffix=" u" onChange={(value) => patchConfig({ softness: value })} />
         <Range label="TEMPERATURA" value={config.temperature} min={1600} max={10000} step={100} suffix=" K" onChange={(value) => patchConfig({ temperature: value })} />
@@ -321,6 +331,6 @@ export default function App() {
 
     {role === "PLAYER" && <div className="player-notice">VISUALIZAÇÃO DE AGENTE — as fontes de luz disponíveis na cena são renderizadas automaticamente neste dispositivo.</div>}
 
-    <footer className="footer"><span>ARQUIVO: SL-04 / OPERAÇÃO NOTURNA</span><span>BUILD 1.0.1</span></footer>
+    <footer className="footer"><span>ARQUIVO: SL-04 / OPERAÇÃO NOTURNA</span><span>BUILD 1.1.0</span></footer>
   </main>;
 }

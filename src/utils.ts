@@ -19,6 +19,7 @@ export function validateConfig(value: unknown): LightConfig {
     falloff: clamp(finite(input.falloff, DEFAULT_CONFIG.falloff), 0, 1),
     softness: clamp(finite(input.softness, DEFAULT_CONFIG.softness), 0, 240),
     temperature: clamp(finite(input.temperature, DEFAULT_CONFIG.temperature), 1600, 10000),
+    beamAngle: clamp(finite(input.beamAngle, DEFAULT_CONFIG.beamAngle), 12, 360),
     enabled: typeof input.enabled === "boolean" ? input.enabled : true,
     locked: typeof input.locked === "boolean" ? input.locked : false,
     visibility: input.visibility === "GM_ONLY" ? "GM_ONLY" : "ALL",
@@ -59,7 +60,7 @@ export function getLightRecords(items: any[]): LightRecord[] {
     const position = token
       ? { x: token.position.x + config.offset.x, y: token.position.y + config.offset.y }
       : { x: item.position.x, y: item.position.y };
-    records.push({ id: item.id, item, config: effectiveConfig, radius, position });
+    records.push({ id: item.id, item, config: effectiveConfig, radius, rotation: finite(item.rotation, 0), position });
   }
   return records;
 }
@@ -93,45 +94,62 @@ export function finalLightColor(config: LightConfig): { x: number; y: number; z:
 }
 
 export function animationLevel(animation: AnimationConfig, unixSeconds: number): number {
-  const t = Math.max(0, unixSeconds - animation.startedAt) * animation.speed;
-  const min = Math.min(animation.min, animation.max);
-  const max = Math.max(animation.min, animation.max);
-  const cycle = (n: number) => n - Math.floor(n);
-  const hash = (n: number) => cycle(Math.sin(n * 127.1 + animation.phase * 311.7) * 43758.5453);
-  let factor = 1;
+  const elapsed = Math.max(0, unixSeconds - animation.startedAt) * animation.speed;
+  const lo = Math.min(animation.min, animation.max);
+  const hi = Math.max(animation.min, animation.max);
+  const fract = (value: number) => value - Math.floor(value);
+  const smooth = (value: number) => {
+    const t = clamp(value, 0, 1);
+    return t * t * (3 - 2 * t);
+  };
+  const hash = (step: number) => fract(
+    Math.sin((step + animation.phase) * 127.1 + 311.7) * 43758.5453123,
+  );
+  const smoothNoise = (value: number) => {
+    const step = Math.floor(value);
+    const blend = smooth(fract(value));
+    return hash(step) * (1 - blend) + hash(step + 1) * blend;
+  };
+  const pulse = (cycle: number, center: number, width: number) => {
+    const raw = Math.abs(cycle - center);
+    const distance = Math.min(raw, 1 - raw);
+    const envelope = 1 - smooth(distance / width);
+    return envelope * envelope;
+  };
+
+  let level = 1;
   switch (animation.type) {
-    case "BLINK":
-      factor = cycle(t * animation.frequency) < 0.5 ? max : min;
+    case "BLINK": {
+      const wave = 0.5 + 0.5 * Math.sin(elapsed * animation.frequency * Math.PI * 2);
+      level = smooth((wave - 0.25) / 0.5);
       break;
+    }
     case "PULSE":
-      factor = min + (max - min) * (0.5 + 0.5 * Math.sin(t * Math.PI * 2));
+      level = 0.5 - 0.5 * Math.cos(elapsed * Math.PI * 2);
       break;
     case "FLICKER": {
-      const step = Math.floor(t * animation.frequency);
-      const noise = hash(step);
-      const wave = 0.5 + 0.5 * Math.sin(t * animation.frequency * 9.1 + animation.phase);
-      factor = min + (max - min) * (1 - animation.irregularity + animation.irregularity * (noise * 0.72 + wave * 0.28));
+      const slow = smoothNoise(elapsed * animation.frequency * 0.72);
+      const fast = smoothNoise(elapsed * animation.frequency * 2.15 + animation.phase * 0.37);
+      const flutter = 0.5 + 0.5 * Math.sin(elapsed * animation.frequency * 6.1 + animation.phase);
+      level = 0.22 + 0.78 * (slow * 0.52 + fast * 0.34 + flutter * 0.14);
       break;
     }
     case "EMERGENCY": {
-      const p = cycle(t * animation.frequency);
-      const on = (p < 0.13 || (p > 0.27 && p < 0.40)) ? max : min;
-      factor = on;
+      const cycle = fract(elapsed * animation.frequency);
+      const flash = Math.max(pulse(cycle, 0.14, 0.12), pulse(cycle, 0.37, 0.12));
+      level = 0.035 + 0.965 * flash;
       break;
     }
     case "OSCILLATE":
-      factor = min + (max - min) * (0.5 + 0.5 * Math.sin(t * Math.PI * 0.6 + animation.phase));
+      level = 0.5 + 0.5 * Math.sin(elapsed * Math.PI * 1.2 + animation.phase);
       break;
-    case "CUSTOM": {
-      const step = Math.floor(t / Math.max(0.05, animation.interval));
-      const noise = hash(step);
-      factor = min + (max - min) * (1 - animation.irregularity + animation.irregularity * noise);
+    case "CUSTOM":
+      level = smoothNoise(elapsed / Math.max(0.05, animation.interval) + animation.phase * 0.11);
       break;
-    }
     default:
-      factor = 1;
+      level = 1;
   }
-  return clamp(factor, 0, 1);
+  return clamp(lo + (hi - lo) * level, 0, 1);
 }
 
 export function isAnimated(config: LightConfig): boolean {

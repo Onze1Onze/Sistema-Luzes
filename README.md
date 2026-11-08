@@ -31,7 +31,7 @@ Este repositório contém uma implementação inicial funcional da arquitetura d
 - Vinculação a Tokens da camada `CHARACTER`, preservando o deslocamento da fonte.
 - Presets prontos e até 20 presets personalizados armazenados nos metadados do jogador.
 - Visibilidade visual para todos ou apenas para o Mestre.
-- Painel deliberadamente vertical, com controles empilhados.
+- Painel deliberadamente vertical, com controles empilhados. O Mestre move a luz pelo interior do círculo, redimensiona pela alça clara e gira pela alça âmbar; rotação e abertura do facho também ficam no painel.
 
 ## Desenvolvimento
 
@@ -54,7 +54,7 @@ O Vite está configurado para publicar no caminho `/Sistema-Luzes/`. Os caminhos
 
 ## Integração com névoa: limite importante
 
-A API oficial documenta `LIGHT` como item local que interage com o sistema **Dynamic Fog**. A extensão cria esse item em `OBR.scene.local`, no padrão exigido pelo SDK. O `EFFECT` também é local e experimental, conforme a documentação oficial.
+A API oficial documenta `LIGHT` como item local que interage com o sistema **Dynamic Fog**. A extensão cria esse item em `OBR.scene.local`, no padrão exigido pelo SDK. O `EFFECT` também é local e experimental, conforme a documentação oficial. Flicker, piscante, emergência e demais curvas são calculados em JavaScript com precisão dupla e atualizados localmente a 30 FPS; o shader recebe somente a intensidade normalizada, evitando operações com timestamps Unix grandes em `float` na GPU. O brilho usa núcleo, halo radial suave e abertura direcional.
 
 Não foi possível localizar uma API pública documentada para uma extensão chamada **Immersive Fog**. Por isso, este projeto não inventa hooks, IDs, eventos nem contratos privados dessa extensão. A integração garantida nesta versão é com a API nativa de `LIGHT`/Dynamic Fog do Owlbear. O shader pós-processado colore apenas a imagem que o próprio renderizador já entregou; ele não remove a névoa nem revela regiões que continuem ocultas. A compatibilidade específica com uma extensão de terceiros chamada Immersive Fog precisa ser validada contra o repositório/documentação exatos dessa extensão.
 
