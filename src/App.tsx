@@ -256,7 +256,7 @@ export default function App() {
       <span className={`role-tag ${role === "GM" ? "gm" : "player"}`}>{role === "GM" ? "MESTRE" : "AGENTE"}</span>
     </header>
 
-    <div className="status-line"><span className="status-dot" />{status}<span className="status-right">v1.1.1 / OR</span></div>
+    <div className="status-line"><span className="status-dot" />{status}<span className="status-right">v1.1.2 / OR</span></div>
 
     <Section title="FONTES DE LUZ" right={<span className="count">{records.length.toString().padStart(2, "0")}</span>}>
       {role === "GM" && <button className="primary-button" onClick={createLight}><span>＋</span> NOVA LUZ NO CENTRO</button>}
@@ -268,7 +268,7 @@ export default function App() {
           <span className={`light-state ${record.config.enabled ? "on" : "off"}`}>{record.config.enabled ? "●" : "○"}</span>
         </button>)}
       </div>
-      {role === "GM" && <div className="tool-hint">Ferramenta SL: arraste o círculo para mover; alça clara para tamanho; alça âmbar para rotação.</div>}
+      {role === "GM" && <div className="tool-hint">Com a ferramenta SL ativa, segure um dos três botões ao lado do círculo: mover, girar ou redimensionar.</div>}
     </Section>
 
     {role === "GM" && selected && <>
@@ -331,6 +331,6 @@ export default function App() {
 
     {role === "PLAYER" && <div className="player-notice">VISUALIZAÇÃO DE AGENTE — as fontes de luz disponíveis na cena são renderizadas automaticamente neste dispositivo.</div>}
 
-    <footer className="footer"><span>ARQUIVO: SL-04 / OPERAÇÃO NOTURNA</span><span>BUILD 1.1.1</span></footer>
+    <footer className="footer"><span>ARQUIVO: SL-04 / OPERAÇÃO NOTURNA</span><span>BUILD 1.1.2</span></footer>
   </main>;
 }

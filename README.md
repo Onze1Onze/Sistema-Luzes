@@ -31,7 +31,7 @@ Este repositório contém uma implementação inicial funcional da arquitetura d
 - Vinculação a Tokens da camada `CHARACTER`, preservando o deslocamento da fonte.
 - Presets prontos e até 20 presets personalizados armazenados nos metadados do jogador.
 - Visibilidade visual para todos ou apenas para o Mestre.
-- Painel deliberadamente vertical, com controles empilhados. O Mestre move a luz pelo interior do círculo, redimensiona pela alça clara e gira pela alça âmbar; rotação e abertura do facho também ficam no painel.
+- Painel deliberadamente vertical, com controles empilhados. No mapa, três botões locais e exclusivos do Mestre ficam ao lado do contorno para mover, girar e redimensionar por arrasto. O Mestre move a luz pelo interior do círculo, redimensiona pela alça clara e gira pela alça âmbar; rotação e abertura do facho também ficam no painel.
 
 ## Desenvolvimento
 

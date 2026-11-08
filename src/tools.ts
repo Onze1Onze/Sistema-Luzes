@@ -1,17 +1,21 @@
 import OBR from "@owlbear-rodeo/sdk";
 import { DEFAULT_CONFIG, LIGHT_META_KEY, PLAYER_META_KEY, TOOL_ID, TOOL_MODE_ID } from "./types";
 import { createLightAt, getSceneItems } from "./repository";
-import { findRecordAt } from "./renderer";
+import { findRecordAt, type LightControlMode } from "./renderer";
 
 const EXTENSION_ICON_URL = new URL("icon.svg", document.baseURI).href;
-type DragMode = "MOVE" | "RESIZE" | "ROTATE";
 
 let latestItems: any[] = [];
 let selectedId: string | null = null;
 let drag: {
   interaction: [((recipe: (draft: any) => void) => any), () => void];
-  mode: DragMode;
-  center: { x: number; y: number };
+  mode: LightControlMode;
+  startPointer: { x: number; y: number };
+  startCenter: { x: number; y: number };
+  startRadius: number;
+  startRotation: number;
+  startPointerAngle: number;
+  pointerOffset: { x: number; y: number };
 } | null = null;
 
 async function readSelected(): Promise<string | null> {
@@ -34,25 +38,45 @@ async function setSelected(id: string | null): Promise<void> {
   await OBR.player.setMetadata({ [PLAYER_META_KEY]: { ...current, selectedId: id } });
 }
 
-function applyDrag(current: NonNullable<typeof drag>, pointerPosition: { x: number; y: number }) {
+function angleFrom(center: { x: number; y: number }, pointer: { x: number; y: number }): number {
+  return Math.atan2(pointer.y - center.y, pointer.x - center.x) * 180 / Math.PI;
+}
+
+function applyDrag(current: NonNullable<typeof drag>, pointer: { x: number; y: number }): void {
   const [update] = current.interaction;
   if (current.mode === "MOVE") {
-    update((draft: any) => { draft.position = pointerPosition; });
-  } else if (current.mode === "RESIZE") {
-    const radius = Math.max(24, Math.min(5000,
-      Math.hypot(pointerPosition.x - current.center.x, pointerPosition.y - current.center.y),
-    ));
+    update((draft: any) => {
+      draft.position = {
+        x: pointer.x - current.pointerOffset.x,
+        y: pointer.y - current.pointerOffset.y,
+      };
+    });
+    return;
+  }
+
+  if (current.mode === "RESIZE") {
+    const startDistance = Math.hypot(
+      current.startPointer.x - current.startCenter.x,
+      current.startPointer.y - current.startCenter.y,
+    );
+    const nextDistance = Math.hypot(
+      pointer.x - current.startCenter.x,
+      pointer.y - current.startCenter.y,
+    );
+    const radius = Math.max(24, Math.min(5000, current.startRadius + nextDistance - startDistance));
     update((draft: any) => {
       draft.width = radius * 2;
       draft.height = radius * 2;
     });
-  } else {
-    const angle = ((Math.atan2(
-      pointerPosition.y - current.center.y,
-      pointerPosition.x - current.center.x,
-    ) * 180 / Math.PI) % 360 + 360) % 360;
-    update((draft: any) => { draft.rotation = angle; });
+    return;
   }
+
+  const nextAngle = angleFrom(current.startCenter, pointer);
+  let delta = nextAngle - current.startPointerAngle;
+  if (delta > 180) delta -= 360;
+  if (delta < -180) delta += 360;
+  const rotation = ((current.startRotation + delta) % 360 + 360) % 360;
+  update((draft: any) => { draft.rotation = rotation; });
 }
 
 function stopDrag(): void {
@@ -73,7 +97,7 @@ export async function registerLightTool(): Promise<void> {
     id: TOOL_MODE_ID,
     icons: [{
       icon: EXTENSION_ICON_URL,
-      label: "Arraste a luz para mover; alças para tamanho e rotação",
+      label: "Segure os botões ao lado da luz para mover, girar ou redimensionar",
       filter: { activeTools: [TOOL_ID] },
     }],
     cursors: [{ cursor: "crosshair" }],
@@ -82,7 +106,8 @@ export async function registerLightTool(): Promise<void> {
       if (role !== "GM") return false;
       latestItems = await getSceneItems();
       await readSelected();
-      const found = findRecordAt(latestItems, event.pointerPosition, selectedId);
+      const scale = await OBR.viewport.getScale();
+      const found = findRecordAt(latestItems, event.pointerPosition, selectedId, scale);
       if (found) {
         await setSelected(found.record.id);
       } else {
@@ -96,16 +121,27 @@ export async function registerLightTool(): Promise<void> {
       if (role !== "GM") return;
       latestItems = await getSceneItems();
       await readSelected();
-      const found = findRecordAt(latestItems, event.pointerPosition, selectedId);
+      const scale = await OBR.viewport.getScale();
+      const found = findRecordAt(latestItems, event.pointerPosition, selectedId, scale);
       if (!found || found.record.config.locked) return;
-      // Token-attached lights stay attached; their offset is controlled by the token link.
       if (found.record.config.linkedTokenId && found.mode === "MOVE") return;
+
       await setSelected(found.record.id);
       const interaction = await OBR.interaction.startItemInteraction(found.record.item);
+      const startCenter = { ...found.record.position };
+      const startPointer = { ...event.pointerPosition };
       drag = {
         interaction,
         mode: found.mode,
-        center: { ...found.record.position },
+        startPointer,
+        startCenter,
+        startRadius: found.record.radius,
+        startRotation: found.record.rotation,
+        startPointerAngle: angleFrom(startCenter, startPointer),
+        pointerOffset: {
+          x: startPointer.x - startCenter.x,
+          y: startPointer.y - startCenter.y,
+        },
       };
     },
     onToolDragMove(_, event) {
