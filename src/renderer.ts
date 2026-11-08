@@ -8,8 +8,8 @@ type AnyItem = any;
 export type LightControlMode = "MOVE" | "ROTATE" | "RESIZE";
 
 const MAX_COLOR_EFFECTS = 64;
-const BUTTON_SIZE = 32;
-const BUTTON_HIT_RADIUS = 22;
+const BUTTON_WIDTH = 56;
+const BUTTON_HEIGHT = 30;
 const BUTTON_GAP = 8;
 
 const SHADER = `
@@ -74,15 +74,23 @@ function effectTopLeft(record: LightRecord) {
 
 export function controlButtonPosition(record: LightRecord, mode: LightControlMode, viewScale: number) {
   const scale = Math.max(0.05, Math.min(20, Number.isFinite(viewScale) ? viewScale : 1));
-  const x = record.position.x + record.radius + (BUTTON_GAP + BUTTON_SIZE / 2) / scale;
-  const yOffset = mode === "MOVE" ? -(BUTTON_SIZE + BUTTON_GAP) / scale
-    : mode === "ROTATE" ? 0
-    : (BUTTON_SIZE + BUTTON_GAP) / scale;
+  const x = record.position.x + record.radius + (BUTTON_GAP + BUTTON_WIDTH / 2) / scale;
+  const step = (BUTTON_HEIGHT + BUTTON_GAP) / scale;
+  const yOffset = mode === "MOVE" ? -step : mode === "ROTATE" ? 0 : step;
   return { x, y: record.position.y + yOffset };
 }
 
-export function controlButtonHitRadius(viewScale: number): number {
-  return BUTTON_HIT_RADIUS / Math.max(0.05, Math.min(20, viewScale || 1));
+export function isControlButtonHit(
+  record: LightRecord,
+  mode: LightControlMode,
+  point: { x: number; y: number },
+  viewScale: number,
+): boolean {
+  const scale = Math.max(0.05, Math.min(20, viewScale || 1));
+  const center = controlButtonPosition(record, mode, scale);
+  const dx = Math.abs(point.x - center.x) * scale;
+  const dy = Math.abs(point.y - center.y) * scale;
+  return dx <= BUTTON_WIDTH / 2 + 8 && dy <= BUTTON_HEIGHT / 2 + 8;
 }
 
 function effectUniforms(config: LightConfig, rotation: number, modulation: number): any[] {
@@ -156,27 +164,33 @@ function buildSelectionRing(record: LightRecord): AnyItem {
 }
 
 function buildControlButton(record: LightRecord, mode: LightControlMode, viewScale: number): AnyItem {
-  const glyph = mode === "MOVE" ? "✥" : mode === "ROTATE" ? "↻" : "⤢";
-  const background = mode === "MOVE" ? "#292522" : mode === "ROTATE" ? "#65402b" : "#3b4447";
+  const label = mode === "MOVE" ? "MOVER" : mode === "ROTATE" ? "GIRAR" : "RAIO";
+  const background = mode === "MOVE" ? "#282a30" : mode === "ROTATE" ? "#70482f" : "#334c54";
+  const border = mode === "MOVE" ? "#8b919b" : mode === "ROTATE" ? "#e0a36e" : "#7db8c6";
   return buildLabel()
-    .name(`SL/Button/${mode}/${record.config.name}`)
-    .plainText(glyph)
-    .width(BUTTON_SIZE)
-    .height(BUTTON_SIZE)
+    .name(`SL/Control/${mode}/${record.config.name}`)
+    .plainText(label)
+    .width(BUTTON_WIDTH)
+    .height(BUTTON_HEIGHT)
     .fontFamily("Arial")
-    .fontSize(19)
+    .fontSize(10)
     .fontWeight(700)
     .textAlign("CENTER")
     .textAlignVertical("MIDDLE")
-    .fillColor("#fff3df")
+    .fillColor("#fff5e8")
+    .fillOpacity(1)
+    .strokeColor(border)
+    .strokeOpacity(0.9)
+    .strokeWidth(1)
     .backgroundColor(background)
-    .backgroundOpacity(0.97)
+    .backgroundOpacity(0.98)
     .cornerRadius(8)
     .position(controlButtonPosition(record, mode, viewScale))
     .layer("CONTROL")
     .locked(true)
-    .disableHit(true)
-    .metadata({ [LOCAL_META_KEY]: { sourceId: record.id, kind: `button-${mode.toLowerCase()}` } })
+    // Hit detection must remain enabled so pointer events can target this label.
+    .disableHit(false)
+    .metadata({ [LOCAL_META_KEY]: { sourceId: record.id, kind: `control-v2-${mode.toLowerCase()}` } })
     .build();
 }
 
@@ -242,7 +256,7 @@ export class LightingRenderer {
         else additions.push(buildSelectionRing(selected));
 
         for (const mode of ["MOVE", "ROTATE", "RESIZE"] as LightControlMode[]) {
-          const kind = `button-${mode.toLowerCase()}`;
+          const kind = `control-v2-${mode.toLowerCase()}`;
           desired.add(`${selected.id}:${kind}`);
           const button = bySourceKind.get(`${selected.id}:${kind}`);
           if (button) updates.push({ item: button, record: selected, visible: true });
@@ -259,7 +273,7 @@ export class LightingRenderer {
       const fogUpdates = updates.filter((entry) => localMeta(entry.item)?.kind === "fog");
       const glowUpdates = updates.filter((entry) => localMeta(entry.item)?.kind === "glow");
       const ringUpdates = updates.filter((entry) => localMeta(entry.item)?.kind === "selection");
-      const buttonUpdates = updates.filter((entry) => localMeta(entry.item)?.kind.startsWith("button-"));
+      const buttonUpdates = updates.filter((entry) => localMeta(entry.item)?.kind.startsWith("control-v2-"));
 
       if (fogUpdates.length) await OBR.scene.local.updateItems(fogUpdates.map((entry) => entry.item), (draft: AnyItem[]) => {
         for (const item of draft) {
@@ -306,7 +320,7 @@ export class LightingRenderer {
           const meta = localMeta(item);
           const entry = buttonUpdates.find((candidate) => localMeta(candidate.item)?.sourceId === meta?.sourceId);
           if (!entry || !meta) continue;
-          const mode = meta.kind === "button-move" ? "MOVE" : meta.kind === "button-rotate" ? "ROTATE" : "RESIZE";
+          const mode = meta.kind === "control-v2-move" ? "MOVE" : meta.kind === "control-v2-rotate" ? "ROTATE" : "RESIZE";
           item.position = controlButtonPosition(entry.record, mode, this.viewScale);
         }
       });
@@ -380,8 +394,7 @@ export function findRecordAt(
   if (selected) {
     for (const mode of ["MOVE", "ROTATE", "RESIZE"] as LightControlMode[]) {
       const button = controlButtonPosition(selected, mode, viewScale);
-      const distance = Math.hypot(point.x - button.x, point.y - button.y);
-      if (distance <= controlButtonHitRadius(viewScale)) return { record: selected, mode };
+      if (isControlButtonHit(selected, mode, point, viewScale)) return { record: selected, mode };
     }
   }
 
