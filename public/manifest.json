@@ -1,0 +1,16 @@
+{
+  "name": "Sistema de Luzes",
+  "version": "1.0.0",
+  "manifest_version": 1,
+  "description": "Iluminação dinâmica, colorida e sincronizada para mesas de RPG.",
+  "author": "Onze1Onze",
+  "icon": "icon.svg",
+  "homepage_url": "https://github.com/Onze1Onze/Sistema-Luzes",
+  "action": {
+    "title": "Sistema de Luzes",
+    "icon": "icon.svg",
+    "popover": "index.html",
+    "width": 340,
+    "height": 760
+  }
+}
