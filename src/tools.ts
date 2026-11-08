@@ -159,7 +159,8 @@ async function beginDrag(event: any): Promise<void> {
 
     if (pendingRelease) {
       applyDrag(state, pendingRelease);
-      stopDrag();
+      drag = null;
+      state.interaction[1]();
     }
   } catch (error) {
     console.error("[Sistema de Luzes] Falha ao iniciar controle da luz:", error);
@@ -173,7 +174,7 @@ async function beginDrag(event: any): Promise<void> {
 
 function stopDrag(pointer?: Point): void {
   if (startingDrag) {
-    if (pointer) pendingRelease = { ...pointer };
+    pendingRelease = pointer ? { ...pointer } : (pendingPointer ? { ...pendingPointer } : null);
     return;
   }
   const state = drag;
