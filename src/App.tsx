@@ -72,7 +72,6 @@ export default function App() {
     let stopItems: (() => void) | undefined;
     let stopPlayer: (() => void) | undefined;
     let stopReady: (() => void) | undefined;
-    let stopSdkReady: (() => void) | undefined;
     let alive = true;
 
     const initialize = async () => {
@@ -116,6 +115,7 @@ export default function App() {
     };
 
     const onSdkReady = () => {
+      if (!alive) return;
       stopReady?.();
       stopReady = OBR.scene.onReadyChange((isSceneReady) => {
         if (isSceneReady) void initialize();
@@ -129,11 +129,10 @@ export default function App() {
     };
 
     if (OBR.isReady) onSdkReady();
-    else stopSdkReady = OBR.onReady(onSdkReady);
+    else OBR.onReady(onSdkReady);
     setReady(true);
     return () => {
       alive = false;
-      stopSdkReady?.();
       stopItems?.();
       stopPlayer?.();
       stopReady?.();
