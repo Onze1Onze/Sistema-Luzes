@@ -124,7 +124,7 @@ async function beginDrag(event: any): Promise<void> {
       const found = findRecordAt(latestItems, event.pointerPosition, selectedId, scale);
       if (!found) return;
       record = found.record;
-      mode = armedMode?.recordId === record.id ? armedMode.mode : found.mode;
+      mode = armedMode && armedMode.recordId === record.id ? armedMode.mode : found.mode;
     }
 
     if (!record || record.config.locked) return;
