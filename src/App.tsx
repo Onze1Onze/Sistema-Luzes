@@ -352,26 +352,17 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <header className="masthead">
-        <div className="brand-group">
-          <div className="brand-emblem">✦</div>
-          <div className="brand-name"><strong>DECK <span>&</span> CARDS</strong><small>Salão de cartas • Sistema compartilhado</small></div>
-        </div>
-        <div className="masthead-right">
-          <span className="sync-state"><i /> {status || "SINCRONIZADO"}</span>
-          <span className="role-pill gm-pill">MESTRE</span>
-        </div>
-      </header>
+      
 
       <nav className="main-nav">
         <button className={view === "decks" ? "nav-tab active" : "nav-tab"} onClick={() => setView("decks")}><span>♜</span> Meus baralhos</button>
         <button className={view === "library" ? "nav-tab active" : "nav-tab"} onClick={() => { setView("library"); setCategory("Todas"); }}><span>▤</span> Biblioteca</button>
         <button className={view === "settings" ? "nav-tab active" : "nav-tab"} onClick={() => setView("settings")}><span>⚙</span> Configurações</button>
         <div className="nav-spacer" />
-        <span className="nav-room">SALA COMPARTILHADA <b>● ONLINE</b></span>
       </nav>
 
       {error && <div className="notice error-notice"><span>!</span>{error}<button onClick={() => setError("")}>×</button></div>}
+      {status && <div className="notice status-notice">{status}</div>}
 
       <div className="workspace">
         <aside className="sidebar">
@@ -435,15 +426,11 @@ export default function App() {
           ) : (
             <>
               <div className="stage-heading">
-                <div><div className="view-kicker">MESA DO MESTRE / BARALHO ATIVO</div><h1>{activeDeck.name}</h1><p>Organize, prepare e revele cartas para todos na sala.</p></div>
+                <div><h1>{activeDeck.name}</h1><p>Organize, prepare e revele cartas para todos na sala.</p></div>
                 <span className="total-counter">{totalCount} / 60 CARTAS</span>
               </div>
 
-              <section className="deck-banner" style={activeDeck.cards[0]?.frontUrl ? { backgroundImage: `linear-gradient(90deg, #100e14 4%, #100e14dd 45%, #100e1470), url("${activeDeck.cards[0].frontUrl}")` } : undefined}>
-                <div className="banner-ornament">✦</div>
-                <div className="banner-content"><span>CRÔNICAS DA MESA</span><h2>{activeDeck.name}</h2><p>Uma coleção de histórias, encontros e descobertas.</p><div className="banner-stats"><b>{totalCount} CARTAS</b><i /> <b>{availableCount} DISPONÍVEIS</b><i /> <b>{discardedCount} DESCARTADAS</b></div></div>
-                <div className="banner-actions"><button onClick={() => void shuffle()}>⤨ Embaralhar</button><button className="gold-button" onClick={() => void drawRandom()}>✦ Sortear carta</button></div>
-              </section>
+              
 
               <div className="card-toolbar">
                 <div className="toolbar-label"><span>✧</span> CARTAS DO BARALHO <small>{filteredCards.length} exibidas</small></div>
@@ -474,11 +461,7 @@ export default function App() {
                 ))}
               </div>
 
-              <section className="draw-zone">
-                <div className="draw-zone-copy"><span>✧</span><div><strong>PILHA DE COMPRA</strong><small>{availableCount + hiddenCount} cartas aguardando na pilha</small></div></div>
-                <div className="draw-stack" aria-hidden="true"><i /><i /><i /><i /><i /></div>
-                <button onClick={() => void drawRandom()} disabled={availableCount + hiddenCount === 0}>Sortear próxima carta <span>→</span></button>
-              </section>
+              
             </>
           )}
         </main>
