@@ -2,6 +2,16 @@
 
 Extensão de bandeja digital de cartas para sessões de RPG.
 
+## Instalação no Owlbear Rodeo
+
+Depois que o workflow de publicação terminar com sucesso, adicione este manifesto em **Profile → Extensions → Add Extension**:
+
+`https://Onze1Onze.github.io/Sistema-Luzes/manifest.json`
+
+O link acima é o endereço publicado para instalação. Não use o endereço do GitHub terminado em `/blob/main/manifest.json`, pois ele abre uma página HTML do GitHub, não o arquivo JSON diretamente.
+
+Na primeira publicação, caso o GitHub Pages ainda não esteja configurado, abra **Settings → Pages** e selecione **GitHub Actions** em **Build and deployment → Source**. Depois, execute novamente o workflow **Deploy Sistema de Cartas to GitHub Pages** na aba **Actions**.
+
 ## Funcionalidades
 
 - Bandeja horizontal com cartas individuais.
@@ -27,23 +37,21 @@ A revelação usa `OBR.broadcast` para propagar o evento e também grava `reveal
 
 ## Desenvolvimento
 
-```bash
-npm install
-npm run dev
-```
+`npm install`
 
-Adicione `http://localhost:5173/manifest.json` como extensão no Owlbear Rodeo e habilite-a na sala.
+`npm run dev`
+
+Adicione `http://localhost:5173/manifest.json` como extensão no Owlbear Rodeo.
 
 ## Build
 
-```bash
-npm run build
-npm run preview
-```
+`npm run build`
+
+`npm run preview`
 
 ## Publicação
 
-Hospede o diretório `dist` em HTTPS e aponte a extensão do Owlbear Rodeo para o `manifest.json` hospedado. O manifest usa caminhos relativos, então o pacote pode ser servido como uma unidade.
+Cada push na branch `main` executa o workflow do GitHub Actions, compila o projeto e publica o conteúdo de `dist/` no GitHub Pages. O manifesto e o ícone são copiados da pasta `public/`; os caminhos de `icon` e `popover` no manifesto usam URLs HTTPS absolutas do site publicado.
 
 ## Imagens
 
