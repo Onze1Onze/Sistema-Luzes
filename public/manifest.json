@@ -1,0 +1,16 @@
+{
+  "name": "Sistema de Cartas",
+  "version": "1.0.1",
+  "manifest_version": 1,
+  "description": "Bandeja digital de cartas compartilhada para Owlbear Rodeo.",
+  "author": "Onze1Onze",
+  "icon": "https://Onze1Onze.github.io/Sistema-Luzes/icon.svg?v=1.0.1",
+  "homepage_url": "https://github.com/Onze1Onze/Sistema-Luzes",
+  "action": {
+    "title": "Sistema de Cartas",
+    "icon": "https://Onze1Onze.github.io/Sistema-Luzes/icon.svg?v=1.0.1",
+    "popover": "https://Onze1Onze.github.io/Sistema-Luzes/index.html?v=1.0.1",
+    "width": 420,
+    "height": 780
+  }
+}
