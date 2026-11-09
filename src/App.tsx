@@ -1,336 +1,344 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import OBR from "@owlbear-rodeo/sdk";
-import type { AnimationType, LightConfig, LightPreset, LightRecord, TokenOption } from "./types";
-import { BUILT_IN_PRESETS } from "./presets";
-import { DEFAULT_CONFIG, LIGHT_META_KEY, PLAYER_META_KEY, TOOL_ID, TOOL_MODE_ID } from "./types";
-import { getLightRecords, validateConfig } from "./utils";
-import { applyPreset, createLightAt, deleteLight, duplicateLight, getSceneItems, updateLight, updateLightRadius, updateLightRotation } from "./repository";
-import { LightingRenderer } from "./renderer";
+import { useEffect, useMemo, useState } from "react";
+import OBR, { buildImageUpload } from "@owlbear-rodeo/sdk";
+import { broadcastReveal, subscribeDeck, subscribeReveal } from "./sync";
+import { loadDeck, saveDeck } from "./storage";
+import { Card, CardSize, DeckState, EMPTY_DECK } from "./types";
 
-const renderer = new LightingRenderer();
-const ANIMATION_LABELS: Record<AnimationType, string> = {
-  STATIC: "Estática", BLINK: "Piscante", PULSE: "Pulsante", FLICKER: "Flicker",
-  EMERGENCY: "Emergência", OSCILLATE: "Oscilante", CUSTOM: "Customizada",
-};
+const CATEGORIES = ["Equipamento", "Evento", "Inimigo", "Pista", "Local", "NPC", "Habilidade", "Condição", "Item", "Narrativa", "Outros"];
 
-function readPlayerData(metadata: Record<string, unknown>) {
-  return (metadata[PLAYER_META_KEY] && typeof metadata[PLAYER_META_KEY] === "object"
-    ? metadata[PLAYER_META_KEY]
-    : {}) as { selectedId?: string | null; savedPresets?: LightPreset[] };
-}
-
-function Range({ label, value, min, max, step = 0.01, suffix = "", onChange }: {
-  label: string; value: number; min: number; max: number; step?: number; suffix?: string; onChange: (value: number) => void;
-}) {
-  return <label className="range-field">
-    <span className="field-head"><span>{label}</span><output>{Number(value.toFixed(2))}{suffix}</output></span>
-    <input type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} />
-  </label>;
-}
-
-function Section({ title, children, right }: { title: string; children: ReactNode; right?: ReactNode }) {
-  return <section className="section"><div className="section-head"><span>{title}</span>{right}</div>{children}</section>;
-}
-
-function IconButton({ title, onClick, children, danger = false, disabled = false }: {
-  title: string; onClick: () => void; children: ReactNode; danger?: boolean; disabled?: boolean;
-}) {
-  return <button className={`icon-button ${danger ? "danger" : ""}`} type="button" title={title} aria-label={title} onClick={onClick} disabled={disabled}>{children}</button>;
+function blankCard(): Card {
+  return {
+    id: crypto.randomUUID(),
+    name: "Nova carta",
+    frontUrl: "",
+    backUrl: "",
+    description: "",
+    category: "Outros",
+    visibility: "AVAILABLE",
+    selected: false,
+    createdAt: Date.now()
+  };
 }
 
 export default function App() {
-  const [ready, setReady] = useState(false);
+  const [deck, setDeck] = useState<DeckState>(EMPTY_DECK);
   const [role, setRole] = useState<"GM" | "PLAYER">("PLAYER");
-  const [items, setItems] = useState<any[]>([]);
+  const [ready, setReady] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [savedPresets, setSavedPresets] = useState<LightPreset[]>([]);
-  const [presetName, setPresetName] = useState("Minha luz");
-  const [status, setStatus] = useState("AGUARDANDO CENA");
+  const [editing, setEditing] = useState<Card | null>(null);
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState("Todas");
+  const [error, setError] = useState("");
+  const [status, setStatus] = useState("");
 
-  const records = useMemo(() => getLightRecords(items), [items]);
-  const selected = useMemo(() => records.find((record) => record.id === selectedId) ?? null, [records, selectedId]);
-  const tokens: TokenOption[] = useMemo(() => items
-    .filter((item) => item.layer === "CHARACTER")
-    .map((item) => ({ id: item.id, name: item.name || "Token sem nome", position: item.position }))
-    .sort((a, b) => a.name.localeCompare(b.name)), [items]);
-
-  const [config, setConfig] = useState<LightConfig>(DEFAULT_CONFIG);
-  const [radius, setRadius] = useState(240);
-  const [rotation, setRotation] = useState(0);
+  const isGM = role === "GM";
 
   useEffect(() => {
-    if (selected) {
-      setConfig(validateConfig(selected.config));
-      setRadius(selected.radius);
-      setRotation(selected.rotation);
-    }
-  }, [selectedId, selected?.item?.metadata, selected?.radius, selected?.rotation]);
+    let unsubDeck = () => {};
+    let unsubReveal = () => {};
+    let mounted = true;
 
-  useEffect(() => {
-    renderer.setContext(items, role, selectedId);
-  }, [items, role, selectedId]);
-
-  useEffect(() => {
-    let stopItems: (() => void) | undefined;
-    let stopPlayer: (() => void) | undefined;
-    let stopReady: (() => void) | undefined;
-    let alive = true;
-
-    const initialize = async () => {
+    void (async () => {
       try {
-        const isSceneReady = await OBR.scene.isReady();
-        if (!alive || !isSceneReady) {
-          if (alive) setStatus("SEM CENA ATIVA");
-          return;
-        }
-        const [sceneItems, currentRole, playerMetadata] = await Promise.all([
-          getSceneItems(), OBR.player.getRole(), OBR.player.getMetadata(),
-        ]);
-        if (!alive) return;
-        const playerData = readPlayerData(playerMetadata);
-        setItems(sceneItems);
+        await OBR.onReady(() => {});
+        const currentRole = await OBR.player.getRole();
+        if (!mounted) return;
         setRole(currentRole);
-        setSelectedId(playerData.selectedId ?? null);
-        setSavedPresets(Array.isArray(playerData.savedPresets) ? playerData.savedPresets : []);
-        setStatus("SISTEMA OPERACIONAL");
-        stopItems?.();
-        stopItems = OBR.scene.items.onChange((nextItems) => {
-          if (alive) {
-            setItems(nextItems);
-            const lightIds = new Set(getLightRecords(nextItems).map((record) => record.id));
-            setSelectedId((current) => current && lightIds.has(current) ? current : null);
-          }
+        setDeck(await loadDeck());
+        setReady(true);
+        unsubDeck = subscribeDeck((next) => setDeck(next));
+        unsubReveal = subscribeReveal(({ cardId }) => {
+          setDeck((prev) => ({ ...prev, revealedCardId: cardId, updatedAt: Date.now() }));
         });
-        if (!stopPlayer) {
-          stopPlayer = OBR.player.onChange((player) => {
-            if (!alive) return;
-            setRole(player.role);
-            const data = readPlayerData(player.metadata ?? {});
-            setSelectedId(data.selectedId ?? null);
-            setSavedPresets(Array.isArray(data.savedPresets) ? data.savedPresets : []);
-          });
-        }
-      } catch (error) {
-        console.error("[Sistema de Luzes] Não foi possível iniciar:", error);
-        if (alive) setStatus("FALHA AO INICIAR");
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Não foi possível carregar o deck.");
+      }
+    })();
+
+    return () => {
+      mounted = false;
+      unsubDeck();
+      unsubReveal();
+    };
+  }, []);
+
+  const filteredCards = useMemo(() => {
+    const q = query.trim().toLocaleLowerCase();
+    return deck.cards.filter((card) => {
+      const textMatch = !q || `${card.name} ${card.description}`.toLocaleLowerCase().includes(q);
+      const categoryMatch = category === "Todas" || card.category === category;
+      return textMatch && categoryMatch;
+    });
+  }, [deck.cards, query, category]);
+
+  const selectedCard = deck.cards.find((c) => c.id === selectedId) ?? null;
+  const revealedCard = deck.cards.find((c) => c.id === deck.revealedCardId) ?? null;
+
+  async function persist(next: DeckState) {
+    setError("");
+    setStatus("");
+    try {
+      setDeck(next);
+      await saveDeck(next);
+      setStatus("Salvo");
+      window.setTimeout(() => setStatus(""), 1200);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Falha ao salvar.");
+    }
+  }
+
+  function patchCard(id: string, patch: Partial<Card>) {
+    const cards = deck.cards.map((card) => card.id === id ? { ...card, ...patch } : card);
+    void persist({ ...deck, cards });
+  }
+
+  async function createCard() {
+    const card = blankCard();
+    await persist({ ...deck, cards: [...deck.cards, card] });
+    setSelectedId(card.id);
+    setEditing(card);
+  }
+
+  async function duplicateCard(card: Card) {
+    const copy = { ...card, id: crypto.randomUUID(), name: `${card.name} — cópia`, selected: false, createdAt: Date.now() };
+    await persist({ ...deck, cards: [...deck.cards, copy] });
+    setSelectedId(copy.id);
+  }
+
+  async function deleteCard(id: string) {
+    const nextCards = deck.cards.filter((card) => card.id !== id);
+    const revealedCardId = deck.revealedCardId === id ? null : deck.revealedCardId;
+    await persist({ ...deck, cards: nextCards, revealedCardId });
+    if (selectedId === id) setSelectedId(null);
+  }
+
+  async function reveal(card: Card) {
+    if (!isGM) return;
+    const nextCards = deck.cards.map((c) => ({ ...c, selected: c.id === card.id, visibility: c.id === card.id ? "REVEALED" as const : c.visibility }));
+    await persist({ ...deck, cards: nextCards, revealedCardId: card.id });
+    await broadcastReveal(card.id);
+  }
+
+  async function hideReveal() {
+    if (!isGM) return;
+    await persist({ ...deck, revealedCardId: null, cards: deck.cards.map(c => c.visibility === "REVEALED" ? { ...c, visibility: "AVAILABLE" as const } : c) });
+    await broadcastReveal(null);
+  }
+
+  async function discard(card: Card) {
+    await persist({ ...deck, cards: deck.cards.map(c => c.id === card.id ? { ...c, visibility: "DISCARDED", selected: false } : c) });
+  }
+
+  async function shuffle() {
+    const cards = [...deck.cards];
+    for (let i = cards.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [cards[i], cards[j]] = [cards[j], cards[i]];
+    }
+    await persist({ ...deck, cards });
+  }
+
+  async function moveCard(id: string, direction: -1 | 1) {
+    const index = deck.cards.findIndex(c => c.id === id);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= deck.cards.length) return;
+    const cards = [...deck.cards];
+    [cards[index], cards[target]] = [cards[target], cards[index]];
+    await persist({ ...deck, cards });
+  }
+
+  async function chooseAsset(field: "frontUrl" | "backUrl") {
+    const downloads = await OBR.assets.downloadImages(false, undefined, "ATTACHMENT");
+    const image = downloads[0]?.image;
+    if (!image) return;
+    if (editing) {
+      setEditing({ ...editing, [field]: image.url });
+    } else if (selectedCard) {
+      patchCard(selectedCard.id, { [field]: image.url });
+    }
+  }
+
+  async function importDeck() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/json,.json";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        const parsed = JSON.parse(await file.text()) as DeckState;
+        if (!Array.isArray(parsed.cards)) throw new Error("Arquivo de deck inválido.");
+        await persist({ ...deck, cards: parsed.cards, cardSize: parsed.cardSize ?? deck.cardSize });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Importação inválida.");
       }
     };
+    input.click();
+  }
 
-    const onSdkReady = () => {
-      if (!alive) return;
-      stopReady?.();
-      stopReady = OBR.scene.onReadyChange((isSceneReady) => {
-        if (isSceneReady) void initialize();
-        else {
-          stopItems?.();
-          stopItems = undefined;
-          setStatus("SEM CENA ATIVA");
-        }
-      });
-      void initialize();
+  function exportDeck() {
+    const payload = JSON.stringify(deck, null, 2);
+    const blob = new Blob([payload], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "sistema-cartas-deck.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function uploadFromFile(field: "frontUrl" | "backUrl") {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file || !editing) return;
+      try {
+        const data = await file.arrayBuffer();
+        await OBR.assets.uploadImages([buildImageUpload(new File([data], file.name, { type: file.type })).build()], "ATTACHMENT");
+        setStatus("Imagem enviada para os assets do Owlbear. Selecione-a pelo botão Biblioteca.");
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Falha ao enviar imagem.");
+      }
     };
+    input.click();
+  }
 
-    if (OBR.isReady) onSdkReady();
-    else OBR.onReady(onSdkReady);
-    setReady(true);
-    return () => {
-      alive = false;
-      stopItems?.();
-      stopPlayer?.();
-      stopReady?.();
-      renderer.dispose();
-    };
-  }, []);
+  if (!ready) return <div className="shell"><div className="loading">Carregando Sistema de Cartas…</div></div>;
 
-  const persistPlayerData = useCallback(async (patch: Partial<{ selectedId: string | null; savedPresets: LightPreset[] }>) => {
-    const current = readPlayerData(await OBR.player.getMetadata());
-    await OBR.player.setMetadata({ [PLAYER_META_KEY]: { ...current, ...patch } });
-  }, []);
-
-  const selectLight = useCallback(async (id: string | null) => {
-    setSelectedId(id);
-    try { await persistPlayerData({ selectedId: id }); }
-    catch (error) { console.warn("[Sistema de Luzes] Não foi possível sincronizar a seleção:", error); }
-  }, [persistPlayerData]);
-
-  const commitConfig = useCallback(async (next: LightConfig) => {
-    const safe = validateConfig(next);
-    setConfig(safe);
-    if (!selected) return;
-    try { await updateLight(selected.id, safe); }
-    catch (error) { console.error("[Sistema de Luzes] Falha ao salvar luz:", error); }
-  }, [selected]);
-
-  const patchConfig = useCallback((patch: Partial<LightConfig>) => {
-    void commitConfig({ ...config, ...patch });
-  }, [config, commitConfig]);
-
-  const changeRadius = useCallback((value: number) => {
-    const safe = Math.max(24, Math.min(5000, value));
-    setRadius(safe);
-    if (selected) void updateLightRadius(selected.id, safe);
-  }, [selected]);
-
-  const changeRotation = useCallback((value: number) => {
-    const safe = ((Math.round(value) % 360) + 360) % 360;
-    setRotation(safe);
-    if (selected) void updateLightRotation(selected.id, safe);
-  }, [selected]);
-
-  const createLight = useCallback(async () => {
-    try {
-      const position = await OBR.viewport.getPosition();
-      const id = await createLightAt(position, DEFAULT_CONFIG);
-      await selectLight(id);
-      setStatus("NOVA LUZ CRIADA");
-    } catch (error) {
-      console.error(error);
-      setStatus("ERRO AO CRIAR LUZ");
-    }
-  }, [selectLight]);
-
-  const removeSelected = useCallback(async () => {
-    if (!selected) return;
-    await deleteLight(selected.id);
-    await selectLight(null);
-  }, [selected, selectLight]);
-
-  const copySelected = useCallback(async () => {
-    if (!selected) return;
-    const id = await duplicateLight(selected.item);
-    if (id) await selectLight(id);
-  }, [selected, selectLight]);
-
-  const apply = useCallback(async (preset: LightPreset) => {
-    if (!selected) {
-      const position = await OBR.viewport.getPosition();
-      const id = await createLightAt(position, validateConfig({ ...preset.config, name: preset.name }));
-      await selectLight(id);
-      return;
-    }
-    await applyPreset(selected.id, preset);
-  }, [selected, selectLight]);
-
-  const bindToken = useCallback(async (tokenId: string) => {
-    if (!selected) return;
-    if (!tokenId) {
-      await commitConfig({ ...config, linkedTokenId: null, offset: { x: 0, y: 0 } });
-      return;
-    }
-    const token = tokens.find((candidate) => candidate.id === tokenId);
-    if (!token) return;
-    await commitConfig({
-      ...config,
-      linkedTokenId: tokenId,
-      offset: { x: selected.position.x - token.position.x, y: selected.position.y - token.position.y },
-    });
-  }, [selected, tokens, config, commitConfig]);
-
-  const savePreset = useCallback(async () => {
-    const name = presetName.trim().slice(0, 32);
-    if (!name) return;
-    const { linkedTokenId: _linkedTokenId, offset: _offset, locked: _locked, visibility: _visibility, ...presetConfig } = config;
-    const preset: LightPreset = {
-      id: `custom-${Date.now()}`,
-      name,
-      config: presetConfig,
-    };
-    const next = [...savedPresets.filter((entry) => entry.name !== name), preset].slice(-20);
-    setSavedPresets(next);
-    await persistPlayerData({ savedPresets: next });
-    setStatus("PRESET ARMAZENADO");
-  }, [config, presetName, savedPresets, persistPlayerData]);
-
-  const allPresets = [...BUILT_IN_PRESETS, ...savedPresets];
-  const rgb = useMemo(() => {
-    const n = Number.parseInt(config.color.slice(1), 16);
-    return `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`;
-  }, [config.color]);
-
-  if (!ready) return <main className="shell"><div className="boot"><span className="sigil">SL</span><span>INICIANDO TERMINAL</span></div></main>;
-
-  return <main className="shell">
-    <header className="topbar">
-      <div className="brand-mark">SL</div>
-      <div className="brand-copy"><strong>SISTEMA DE LUZES</strong><small>DIVISÃO DE CONTENÇÃO · Nº 04</small></div>
-      <span className={`role-tag ${role === "GM" ? "gm" : "player"}`}>{role === "GM" ? "MESTRE" : "AGENTE"}</span>
-    </header>
-
-    <div className="status-line"><span className="status-dot" />{status}<span className="status-right">v1.1.4 / OR</span></div>
-
-    <Section title="FONTES DE LUZ" right={<span className="count">{records.length.toString().padStart(2, "0")}</span>}>
-      {role === "GM" && <button className="primary-button" onClick={createLight}><span>＋</span> NOVA LUZ NO CENTRO</button>}
-      <div className="light-list">
-        {records.length === 0 && <div className="empty">NENHUMA FONTE REGISTRADA</div>}
-        {records.map((record) => <button key={record.id} className={`light-row ${record.id === selectedId ? "selected" : ""}`} onClick={() => selectLight(record.id)}>
-          <span className="light-swatch" style={{ background: record.config.color, boxShadow: `0 0 12px ${record.config.color}88` }} />
-          <span className="light-label"><strong>{record.config.name}</strong><small>{record.config.linkedTokenId ? "VINCULADA A TOKEN" : "FIXA NO MAPA"} · {ANIMATION_LABELS[record.config.animation.type].toUpperCase()}</small></span>
-          <span className={`light-state ${record.config.enabled ? "on" : "off"}`}>{record.config.enabled ? "●" : "○"}</span>
-        </button>)}
-      </div>
-      {role === "GM" && <div className="tool-hint">Com a ferramenta SL ativa, toque e arraste os botões MOVER, GIRAR e RAIO. Um toque também arma o modo para arrastar o círculo.</div>}
-    </Section>
-
-    {role === "GM" && selected && <>
-      <Section title="LUZ SELECIONADA" right={<div className="row-actions">
-        <IconButton title={config.enabled ? "Desativar" : "Ativar"} onClick={() => patchConfig({ enabled: !config.enabled })}>{config.enabled ? "◉" : "○"}</IconButton>
-        <IconButton title={config.locked ? "Desbloquear" : "Bloquear"} onClick={() => patchConfig({ locked: !config.locked })}>{config.locked ? "▣" : "◇"}</IconButton>
-        <IconButton title="Duplicar" onClick={copySelected}>▢</IconButton>
-        <IconButton title="Excluir" danger onClick={removeSelected}>×</IconButton>
-      </div>}>
-        <label className="field"><span>IDENTIFICAÇÃO</span><input value={config.name} maxLength={48} onChange={(event) => patchConfig({ name: event.target.value })} /></label>
-        <div className="field-head"><span>COR / HEX</span><output>RGB {rgb}</output></div>
-        <div className="color-row"><input aria-label="Selecionar cor" type="color" value={config.color} onChange={(event) => patchConfig({ color: event.target.value })} /><input aria-label="Código hexadecimal" className="hex-input" value={config.color.toUpperCase()} maxLength={7} onChange={(event) => {
-          const value = event.target.value;
-          if (/^#[0-9a-fA-F]{6}$/.test(value)) patchConfig({ color: value });
-        }} /></div>
-        <div className="swatch-grid">
-          {["#FFFFFF", "#C8DEFF", "#FFD39B", "#FF343D", "#4D91FF", "#42D889", "#A65BDB", "#FFD84A", "#31D4E5", "#EE58C7", "#FF5A1F", "#A20D1B"].map((color) => <button key={color} title={color} style={{ background: color }} className={config.color.toUpperCase() === color ? "active" : ""} onClick={() => patchConfig({ color })} />)}
+  return (
+    <div className="shell">
+      <header className="topbar">
+        <div>
+          <div className="eyebrow">OWLBEAR RODEO</div>
+          <h1>Sistema de Cartas</h1>
         </div>
-        <Range label="INTENSIDADE" value={config.intensity} min={0} max={2.5} onChange={(value) => patchConfig({ intensity: value })} />
-        <Range label="OPACIDADE" value={config.opacity} min={0} max={1} onChange={(value) => patchConfig({ opacity: value })} />
-        <Range label="RAIO" value={radius} min={24} max={2000} step={8} suffix=" u" onChange={changeRadius} />
-        <Range label="ROTAÇÃO" value={rotation} min={0} max={359} step={1} suffix="°" onChange={changeRotation} />
-        <Range label="ABERTURA DO FACHO" value={config.beamAngle} min={12} max={360} step={2} suffix="°" onChange={(value) => patchConfig({ beamAngle: value })} />
-        <Range label="FALLOFF" value={config.falloff} min={0} max={1} onChange={(value) => patchConfig({ falloff: value })} />
-        <Range label="SUAVIDADE DE SOMBRA" value={config.softness} min={0} max={240} step={4} suffix=" u" onChange={(value) => patchConfig({ softness: value })} />
-        <Range label="TEMPERATURA" value={config.temperature} min={1600} max={10000} step={100} suffix=" K" onChange={(value) => patchConfig({ temperature: value })} />
-        <label className="field"><span>VISIBILIDADE</span><select value={config.visibility} onChange={(event) => patchConfig({ visibility: event.target.value as LightConfig["visibility"] })}><option value="ALL">Todos os jogadores</option><option value="GM_ONLY">Somente Mestre</option></select></label>
-      </Section>
+        <span className={isGM ? "role gm" : "role"}>{isGM ? "MESTRE" : "JOGADOR"}</span>
+      </header>
 
-      <Section title="ANIMAÇÃO">
-        <label className="field"><span>PADRÃO</span><select value={config.animation.type} onChange={(event) => patchConfig({ animation: { ...config.animation, type: event.target.value as AnimationType, startedAt: Date.now() / 1000 } })}>
-          {Object.entries(ANIMATION_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-        </select></label>
-        {config.animation.type !== "STATIC" && <>
-          <Range label="VELOCIDADE" value={config.animation.speed} min={0.05} max={8} step={0.05} onChange={(value) => patchConfig({ animation: { ...config.animation, speed: value } })} />
-          <Range label="INTENSIDADE MÍNIMA" value={config.animation.min} min={0} max={1} onChange={(value) => patchConfig({ animation: { ...config.animation, min: value } })} />
-          <Range label="INTENSIDADE MÁXIMA" value={config.animation.max} min={0} max={1} onChange={(value) => patchConfig({ animation: { ...config.animation, max: value } })} />
-          <Range label="FREQUÊNCIA" value={config.animation.frequency} min={0.1} max={30} step={0.1} suffix=" Hz" onChange={(value) => patchConfig({ animation: { ...config.animation, frequency: value } })} />
-          <Range label="IRREGULARIDADE" value={config.animation.irregularity} min={0} max={1} onChange={(value) => patchConfig({ animation: { ...config.animation, irregularity: value } })} />
-          {config.animation.type === "CUSTOM" && <Range label="INTERVALO" value={config.animation.interval} min={0.05} max={5} step={0.05} suffix=" s" onChange={(value) => patchConfig({ animation: { ...config.animation, interval: value } })} />}
-        </>}
-      </Section>
+      {error && <div className="error">{error}</div>}
+      {status && <div className="toast">{status}</div>}
 
-      <Section title="VINCULAÇÃO AO TOKEN">
-        <label className="field"><span>ACOMPANHAR</span><select value={config.linkedTokenId ?? ""} onChange={(event) => void bindToken(event.target.value)}>
-          <option value="">Luz independente</option>
-          {tokens.map((token) => <option key={token.id} value={token.id}>{token.name}</option>)}
-        </select></label>
-        {config.linkedTokenId && <p className="note">A luz acompanha o token e mantém o deslocamento configurado. A movimentação manual é desativada enquanto vinculada.</p>}
-      </Section>
-    </>}
+      {isGM ? (
+        <section className="controls">
+          <button className="primary" onClick={() => void createCard()}>＋ Nova carta</button>
+          <button onClick={() => void shuffle()}>⤨ Embaralhar</button>
+          <button onClick={() => void importDeck()}>Importar</button>
+          <button onClick={exportDeck}>Exportar</button>
+          <label className="select-row">Tamanho
+            <select value={deck.cardSize} onChange={(e) => void persist({ ...deck, cardSize: e.target.value as CardSize })}>
+              <option value="small">Pequena</option>
+              <option value="medium">Média</option>
+              <option value="large">Grande</option>
+            </select>
+          </label>
+        </section>
+      ) : (
+        <div className="player-note">A bandeja administrativa pertence ao Mestre. Aqui aparecem apenas cartas reveladas.</div>
+      )}
 
-    {role === "GM" && <Section title="PROTOCOLOS / PRESETS">
-      <div className="preset-grid">{allPresets.map((preset) => <button key={preset.id} className="preset" onClick={() => void apply(preset)}>
-        <span className="preset-dot" style={{ background: preset.config.color, boxShadow: `0 0 10px ${preset.config.color}99` }} />
-        <span>{preset.name}</span>
-      </button>)}</div>
-      {selected && <div className="save-preset"><input value={presetName} maxLength={32} onChange={(event) => setPresetName(event.target.value)} aria-label="Nome do preset" /><button onClick={() => void savePreset()}>SALVAR PRESET</button></div>}
-    </Section>}
+      {isGM && (
+        <section className="filters">
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="⌕ Pesquisar carta…" />
+          <select value={category} onChange={(e) => setCategory(e.target.value)}>
+            <option>Todas</option>
+            {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+          </select>
+        </section>
+      )}
 
-    {role === "PLAYER" && <div className="player-notice">VISUALIZAÇÃO DE AGENTE — as fontes de luz disponíveis na cena são renderizadas automaticamente neste dispositivo.</div>}
+      {isGM && (
+        <section className="deck-area">
+          <div className="section-title"><span>DECK</span><small>{filteredCards.length} cartas</small></div>
+          <div className={`card-tray size-${deck.cardSize}`}>
+            {filteredCards.length === 0 && <div className="empty">Nenhuma carta encontrada.</div>}
+            {filteredCards.map((card) => (
+              <article
+                key={card.id}
+                className={`card-shell ${selectedId === card.id ? "selected" : ""}`}
+                draggable
+                onDragStart={(e) => e.dataTransfer.setData("text/card-id", card.id)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  const source = e.dataTransfer.getData("text/card-id");
+                  if (!source || source === card.id) return;
+                  const cards = [...deck.cards];
+                  const a = cards.findIndex(c => c.id === source);
+                  const b = cards.findIndex(c => c.id === card.id);
+                  if (a >= 0 && b >= 0) {
+                    const [item] = cards.splice(a, 1);
+                    cards.splice(b, 0, item);
+                    void persist({ ...deck, cards });
+                  }
+                }}
+                onClick={() => setSelectedId(card.id)}
+                onDoubleClick={() => setEditing({ ...card })}
+              >
+                <div className="card">
+                  <img src={card.visibility === "HIDDEN" ? (card.backUrl || card.frontUrl) : (card.frontUrl || card.backUrl)} alt="" />
+                  <div className="card-shade" />
+                  <div className="card-meta">
+                    <span>{card.category}</span>
+                    <strong>{card.name}</strong>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
 
-    <footer className="footer"><span>ARQUIVO: SL-04 / OPERAÇÃO NOTURNA</span><span>BUILD 1.1.4</span></footer>
-  </main>;
+      {isGM && selectedCard && (
+        <section className="drawer">
+          <div className="drawer-head">
+            <div><span className="eyebrow">CARTA SELECIONADA</span><h2>{selectedCard.name}</h2></div>
+            <button onClick={() => setSelectedId(null)}>×</button>
+          </div>
+          <div className="drawer-actions">
+            <button className="primary" onClick={() => void reveal(selectedCard)}>◉ Revelar para todos</button>
+            <button onClick={() => setEditing({ ...selectedCard })}>Editar</button>
+            <button onClick={() => void duplicateCard(selectedCard)}>Duplicar</button>
+            <button onClick={() => void discard(selectedCard)}>Descartar</button>
+            <button onClick={() => void moveCard(selectedCard.id, -1)}>←</button>
+            <button onClick={() => void moveCard(selectedCard.id, 1)}>→</button>
+            <button className="danger" onClick={() => void deleteCard(selectedCard.id)}>Excluir</button>
+          </div>
+        </section>
+      )}
+
+      {editing && isGM && (
+        <div className="modal-backdrop" onMouseDown={(e) => e.currentTarget === e.target && setEditing(null)}>
+          <form className="editor" onSubmit={(e) => {
+            e.preventDefault();
+            patchCard(editing.id, editing);
+            setEditing(null);
+          }}>
+            <div className="drawer-head"><div><span className="eyebrow">EDITOR</span><h2>Configurar carta</h2></div><button type="button" onClick={() => setEditing(null)}>×</button></div>
+            <label>Nome<input value={editing.name} onChange={e => setEditing({ ...editing, name: e.target.value })} required /></label>
+            <label>Categoria<select value={editing.category} onChange={e => setEditing({ ...editing, category: e.target.value })}>{CATEGORIES.map(c => <option key={c}>{c}</option>)}</select></label>
+            <label>Descrição<textarea rows={4} value={editing.description} onChange={e => setEditing({ ...editing, description: e.target.value })} /></label>
+            <div className="image-fields">
+              <label>Frente<input value={editing.frontUrl} onChange={e => setEditing({ ...editing, frontUrl: e.target.value })} placeholder="URL da imagem" /><span><button type="button" onClick={() => void chooseAsset("frontUrl")}>Biblioteca</button><button type="button" onClick={() => void uploadFromFile("frontUrl")}>Enviar</button></span></label>
+              <label>Verso<input value={editing.backUrl} onChange={e => setEditing({ ...editing, backUrl: e.target.value })} placeholder="URL da imagem" /><span><button type="button" onClick={() => void chooseAsset("backUrl")}>Biblioteca</button><button type="button" onClick={() => void uploadFromFile("backUrl")}>Enviar</button></span></label>
+            </div>
+            <label>Estado inicial<select value={editing.visibility} onChange={e => setEditing({ ...editing, visibility: e.target.value as Card["visibility"] })}><option value="HIDDEN">Oculta</option><option value="AVAILABLE">Disponível</option><option value="DISCARDED">Descartada</option></select></label>
+            <button className="primary full" type="submit">Salvar carta</button>
+          </form>
+        </div>
+      )}
+
+      {revealedCard && (
+        <div className="reveal-backdrop">
+          <div className="reveal-card">
+            <button className="close-reveal" onClick={() => isGM && void hideReveal()} aria-label="Fechar">×</button>
+            <div className="reveal-image-wrap">
+              <img src={revealedCard.frontUrl || revealedCard.backUrl} alt={revealedCard.name} />
+            </div>
+            <div className="reveal-info"><span>{revealedCard.category}</span><h2>{revealedCard.name}</h2>{revealedCard.description && <p>{revealedCard.description}</p>}</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }

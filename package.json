@@ -1,7 +1,7 @@
 {
-  "name": "sistema-de-luzes-obr",
+  "name": "sistema-cartas-obr",
   "private": true,
-  "version": "1.1.4",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -15,9 +15,9 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@types/node": "^22.10.2",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
-    "@types/node": "^22.10.2",
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "^5.7.3",
     "vite": "^6.0.7"
