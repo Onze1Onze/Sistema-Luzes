@@ -425,13 +425,7 @@ export default function App() {
             </section>
           ) : (
             <>
-              <div className="stage-heading">
-                <div><h1>{activeDeck.name}</h1><p>Organize, prepare e revele cartas para todos na sala.</p></div>
-                <span className="total-counter">{totalCount} / 60 CARTAS</span>
-              </div>
-
               
-
               <div className="card-toolbar">
                 <div className="toolbar-label"><span>✧</span> CARTAS DO BARALHO <small>{filteredCards.length} exibidas</small></div>
                 <div className="toolbar-tools"><label className="search-box"><span>⌕</span><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Pesquisar..." /></label><select value={category} onChange={(e) => setCategory(e.target.value)}><option value="Todas">Todas</option>{CATEGORIES.map((item) => <option key={item}>{item}</option>)}</select><button className="new-card-button" onClick={() => void createCard()}>＋ Nova carta</button></div>
