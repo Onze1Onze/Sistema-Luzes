@@ -13,18 +13,34 @@ export interface Card {
   createdAt: number;
 }
 
-export interface DeckState {
-  version: 1;
+export interface CardDeck {
+  id: string;
+  name: string;
   cards: Card[];
   revealedCardId: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface DeckState {
+  version: 2;
+  decks: CardDeck[];
+  activeDeckId: string;
   cardSize: CardSize;
   updatedAt: number;
 }
 
 export const EMPTY_DECK: DeckState = {
-  version: 1,
-  cards: [],
-  revealedCardId: null,
+  version: 2,
+  decks: [{
+    id: "default-deck",
+    name: "Baralho principal",
+    cards: [],
+    revealedCardId: null,
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  }],
+  activeDeckId: "default-deck",
   cardSize: "medium",
   updatedAt: Date.now()
 };
