@@ -352,7 +352,17 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      
+      <header className="app-header">
+        <div className="brand-emblem" aria-hidden="true">✦</div>
+        <div className="brand-name">
+          <strong>DECK <span>&amp;</span> CARDS</strong>
+          <small>EXTENSÃO PARA OWLBEAR RODEO</small>
+        </div>
+        <div className="app-header-meta">
+          <span className="connection-status"><i /> Conectado à sala</span>
+          <span className="role-pill">{isGM ? "MESTRE" : "JOGADOR"}</span>
+        </div>
+      </header>
 
       <nav className="main-nav">
         <button className={view === "decks" ? "nav-tab active" : "nav-tab"} onClick={() => setView("decks")}><span>♜</span> Meus baralhos</button>
@@ -360,6 +370,44 @@ export default function App() {
         <button className={view === "settings" ? "nav-tab active" : "nav-tab"} onClick={() => setView("settings")}><span>⚙</span> Configurações</button>
         <div className="nav-spacer" />
       </nav>
+
+      <section className="mobile-quickbar" aria-label="Atalhos do baralho">
+        <div className="mobile-deck-row">
+          <label className="mobile-deck-picker">
+            <span>BARALHO ATUAL</span>
+            <select
+              value={activeDeck?.id ?? ""}
+              onChange={(event) => void selectDeck(event.target.value)}
+              aria-label="Selecionar baralho"
+            >
+              {deck.decks.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+          </label>
+          <button className="mobile-new-deck" onClick={() => void createDeck()}>＋ Novo</button>
+        </div>
+        {view === "decks" && (
+          <div className="mobile-category-strip" aria-label="Filtrar cartas por categoria">
+            <button
+              className={category === "Todas" ? "mobile-category active" : "mobile-category"}
+              onClick={() => setCategory("Todas")}
+            >
+              Todas <b>{totalCount}</b>
+            </button>
+            {CATEGORIES.map((name) => {
+              const count = (activeDeck?.cards ?? []).filter((card) => card.category === name).length;
+              return (
+                <button
+                  key={name}
+                  className={category === name ? "mobile-category active" : "mobile-category"}
+                  onClick={() => setCategory(name)}
+                >
+                  {name} <b>{count}</b>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       {error && <div className="notice error-notice"><span>!</span>{error}<button onClick={() => setError("")}>×</button></div>}
       {status && <div className="notice status-notice">{status}</div>}
@@ -425,7 +473,15 @@ export default function App() {
             </section>
           ) : (
             <>
-              
+              <div className="stage-heading deck-stage-heading">
+                <div>
+                  <div className="view-kicker">MESA DO MESTRE / BARALHO ATIVO</div>
+                  <h1>{activeDeck?.name ?? "Baralho"}</h1>
+                  <p>Organize as cartas, escolha uma e revele para todos os jogadores.</p>
+                </div>
+                <span className="total-counter">{totalCount} CARTAS</span>
+              </div>
+
               <div className="card-toolbar">
                 <div className="toolbar-label"><span>✧</span> CARTAS DO BARALHO <small>{filteredCards.length} exibidas</small></div>
                 <div className="toolbar-tools"><label className="search-box"><span>⌕</span><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Pesquisar..." /></label><select value={category} onChange={(e) => setCategory(e.target.value)}><option value="Todas">Todas</option>{CATEGORIES.map((item) => <option key={item}>{item}</option>)}</select><button className="new-card-button" onClick={() => void createCard()}>＋ Nova carta</button></div>
@@ -461,7 +517,7 @@ export default function App() {
         </main>
 
         {view === "decks" && (
-          <aside className="inspector">
+          <aside className={selectedCard ? "inspector has-selection" : "inspector"}>
             {selectedCard ? (
               <>
                 <div className="inspector-heading"><span>DETALHES DA CARTA</span><button onClick={() => setSelectedId(null)} aria-label="Fechar detalhes">×</button></div>
