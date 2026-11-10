@@ -1,15 +1,15 @@
 {
   "name": "Sistema de Cartas",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "manifest_version": 1,
   "description": "Mesa horizontal de cartas e baralhos compartilhados para Owlbear Rodeo.",
   "author": "Onze1Onze",
-  "icon": "https://onze1onze.github.io/Sistema-Luzes/icon.svg?v=1.1.0",
+  "icon": "https://onze1onze.github.io/Sistema-Luzes/icon.svg?v=1.1.1",
   "homepage_url": "https://github.com/Onze1Onze/Sistema-Luzes",
   "action": {
     "title": "Deck & Cards",
-    "icon": "https://onze1onze.github.io/Sistema-Luzes/icon.svg?v=1.1.0",
-    "popover": "https://onze1onze.github.io/Sistema-Luzes/index.html?v=1.1.0",
+    "icon": "https://onze1onze.github.io/Sistema-Luzes/icon.svg?v=1.1.1",
+    "popover": "https://onze1onze.github.io/Sistema-Luzes/index.html?v=1.1.1",
     "width": 1180,
     "height": 820
   }

@@ -1274,3 +1274,16 @@ textarea:focus-visible {
     scroll-behavior: auto;
   }
 }
+
+
+/* A janela aparece imediatamente; controles aguardam apenas o contexto do Owlbear. */
+.app-shell[data-connection="connecting"] .main-nav,
+.app-shell[data-connection="connecting"] .mobile-quickbar,
+.app-shell[data-connection="connecting"] .workspace {
+  pointer-events: none;
+}
+
+.connection-status.is-connecting i {
+  background: #bd9257;
+  box-shadow: 0 0 9px #bd925780;
+}

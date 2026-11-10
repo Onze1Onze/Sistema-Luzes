@@ -41,8 +41,8 @@ function cardImage(card: Card): string {
 
 export default function App() {
   const [deck, setDeck] = useState<DeckState>(EMPTY_DECK);
-  const [role, setRole] = useState<"GM" | "PLAYER">("PLAYER");
-  const [ready, setReady] = useState(false);
+  const [role, setRole] = useState<"GM" | "PLAYER" | null>(null);
+  const [obrReady, setObrReady] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Card | null>(null);
   const [query, setQuery] = useState("");
@@ -58,31 +58,61 @@ export default function App() {
     let unsubDeck = () => {};
     let unsubReveal = () => {};
     let mounted = true;
+    let initStarted = false;
+    let initializationComplete = false;
 
-    void (async () => {
-      try {
-        await OBR.onReady(() => {});
-        const currentRole = await OBR.player.getRole();
-        if (!mounted) return;
-        setRole(currentRole);
-        setDeck(await loadDeck());
-        setReady(true);
-        unsubDeck = subscribeDeck((next) => setDeck(normalizeDeckState(next)));
-        unsubReveal = subscribeReveal(({ cardId }) => {
-          setDeck((prev) => ({
-            ...prev,
-            decks: prev.decks.map((item) => item.id === prev.activeDeckId
-              ? { ...item, revealedCardId: cardId, updatedAt: Date.now() }
-              : item)
-          }));
-        });
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Não foi possível carregar a coleção.");
+    const readinessTimeout = window.setTimeout(() => {
+      if (mounted && !initializationComplete) {
+        setError("O Owlbear não respondeu à inicialização. Feche e abra a extensão novamente.");
       }
-    })();
+    }, 8000);
+
+    // OBR.onReady registra um callback; não é uma Promise e não deve ser aguardado com await.
+    OBR.onReady(() => {
+      if (!mounted || initStarted) return;
+      initStarted = true;
+
+      void (async () => {
+        try {
+          const currentRole = await OBR.player.getRole();
+          if (!mounted) return;
+
+          setRole(currentRole);
+          unsubDeck = subscribeDeck((next) => setDeck(normalizeDeckState(next)));
+          unsubReveal = subscribeReveal(({ cardId }) => {
+            setDeck((prev) => ({
+              ...prev,
+              decks: prev.decks.map((item) => item.id === prev.activeDeckId
+                ? { ...item, revealedCardId: cardId, updatedAt: Date.now() }
+                : item)
+            }));
+          });
+
+          // Libera a interface assim que o contexto e o perfil estiverem prontos.
+          setObrReady(true);
+          initializationComplete = true;
+          window.clearTimeout(readinessTimeout);
+
+          // A leitura dos baralhos acontece em segundo plano e não bloqueia a janela.
+          void loadDeck()
+            .then((initialDeck) => {
+              if (mounted) setDeck(initialDeck);
+            })
+            .catch((e) => {
+              if (mounted) setError(e instanceof Error ? e.message : "Não foi possível carregar a coleção.");
+            });
+        } catch (e) {
+          if (!mounted) return;
+          initializationComplete = true;
+          window.clearTimeout(readinessTimeout);
+          setError(e instanceof Error ? e.message : "Não foi possível conectar ao Owlbear Rodeo.");
+        }
+      })();
+    });
 
     return () => {
       mounted = false;
+      window.clearTimeout(readinessTimeout);
       unsubDeck();
       unsubReveal();
     };
@@ -116,6 +146,7 @@ export default function App() {
   const totalCount = (activeDeck?.cards ?? []).length;
 
   async function persist(next: DeckState) {
+    if (!obrReady) return;
     setError("");
     setStatus("");
     try {
@@ -327,11 +358,7 @@ export default function App() {
     void persist(withActiveDeck({ cards }));
   }
 
-  if (!ready) {
-    return <div className="app-loading"><div className="loading-emblem">✦</div><strong>DECK & CARDS</strong><span>Preparando a mesa...</span></div>;
-  }
-
-  if (!isGM) {
+  if (role === "PLAYER") {
     return (
       <div className="player-screen">
         <header className="player-header"><div className="brand-emblem">✦</div><div><strong>DECK & CARDS</strong><span>ÁREA DOS JOGADORES</span></div><span className="role-pill">JOGADOR</span></header>
@@ -351,7 +378,7 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-connection={obrReady ? "ready" : "connecting"}>
       <header className="app-header">
         <div className="brand-emblem" aria-hidden="true">✦</div>
         <div className="brand-name">
@@ -359,8 +386,8 @@ export default function App() {
           <small>EXTENSÃO PARA OWLBEAR RODEO</small>
         </div>
         <div className="app-header-meta">
-          <span className="connection-status"><i /> Conectado à sala</span>
-          <span className="role-pill">{isGM ? "MESTRE" : "JOGADOR"}</span>
+          <span className={obrReady ? "connection-status" : "connection-status is-connecting"}><i /> {obrReady ? "Conectado à sala" : "Conectando à sala"}</span>
+          <span className="role-pill">{role === "GM" ? "MESTRE" : role === "PLAYER" ? "JOGADOR" : "CONECTANDO"}</span>
         </div>
       </header>
 
