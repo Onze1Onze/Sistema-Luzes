@@ -314,3 +314,959 @@ button:disabled { opacity: .35; cursor: not-allowed; transform: none !important;
 @media (prefers-reduced-motion: reduce) {
   *,*::before,*::after { animation-duration:.01ms !important; transition-duration:.01ms !important; scroll-behavior:auto !important; }
 }
+
+
+/* Responsive product shell and larger, more comfortable controls. */
+.app-shell {
+  overflow: visible;
+  overflow-x: clip;
+}
+
+.app-header {
+  position: relative;
+  z-index: 2;
+  min-height: 68px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 20px;
+  border-bottom: 1px solid rgba(195,154,84,.25);
+  background: linear-gradient(110deg, #24191d, #171216 68%, #120f12);
+}
+
+.app-header .brand-emblem {
+  width: 38px;
+  height: 38px;
+}
+
+.app-header .brand-name strong {
+  font-size: 16px;
+  letter-spacing: .12em;
+}
+
+.app-header .brand-name small {
+  margin-top: 2px;
+  font-size: 8px;
+}
+
+.app-header-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.connection-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #a89a8b;
+  font-size: 10px;
+}
+
+.connection-status i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #81ae79;
+  box-shadow: 0 0 9px #81ae7980;
+}
+
+.app-header .role-pill {
+  font-size: 9px;
+}
+
+.main-nav {
+  height: 48px;
+  padding: 0 16px;
+}
+
+.nav-tab {
+  min-width: 132px;
+  font-size: 10px;
+}
+
+.workspace {
+  min-height: calc(100vh - 116px);
+}
+
+.side-title {
+  font-size: 10px;
+}
+
+.side-title button {
+  min-height: 30px;
+  padding: 6px 9px;
+  font-size: 8px;
+}
+
+.deck-entry-main {
+  min-height: 53px;
+  padding: 7px;
+}
+
+.deck-entry-copy strong {
+  font-size: 10px;
+}
+
+.deck-entry-copy small {
+  font-size: 9px;
+}
+
+.category-option {
+  min-height: 32px;
+  padding: 7px 8px;
+  font-size: 9px;
+}
+
+.category-option b {
+  font-size: 9px;
+}
+
+.main-stage {
+  padding: 20px 20px 18px;
+}
+
+.deck-stage-heading {
+  margin-bottom: 5px;
+}
+
+.deck-stage-heading h1 {
+  font-size: 22px;
+}
+
+.deck-stage-heading p {
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.view-kicker {
+  font-size: 8px;
+}
+
+.total-counter {
+  padding: 8px 10px;
+  font-size: 9px;
+}
+
+.card-toolbar {
+  gap: 12px;
+  margin-top: 13px;
+  padding-bottom: 10px;
+}
+
+.toolbar-label {
+  font-size: 10px;
+}
+
+.toolbar-label small {
+  font-size: 9px;
+}
+
+.toolbar-tools {
+  gap: 8px;
+}
+
+.search-box {
+  min-height: 38px;
+  padding: 0 9px;
+}
+
+.search-box input {
+  min-height: 36px;
+  font-size: 11px;
+}
+
+.toolbar-tools select,
+.library-tools select {
+  min-height: 38px;
+  max-width: 150px;
+  padding: 8px 10px;
+  font-size: 10px;
+}
+
+.toolbar-tools button,
+.library-tools button,
+.banner-actions button,
+.inspector-actions button,
+.setting-card button {
+  min-height: 38px;
+  padding: 8px 11px;
+  font-size: 10px;
+}
+
+.card-grid {
+  gap: 12px;
+}
+
+.table-card-copy {
+  gap: 5px;
+  padding: 9px 10px 10px;
+}
+
+.table-card-copy > span {
+  font-size: 8px;
+}
+
+.table-card-copy strong {
+  font-size: 10px;
+}
+
+.state-label {
+  font-size: 8px;
+}
+
+.card-number {
+  font-size: 8px;
+}
+
+.inspector {
+  padding: 18px 15px;
+}
+
+.inspector-heading {
+  font-size: 9px;
+}
+
+.inspector-art {
+  height: 220px;
+}
+
+.inspector-category {
+  font-size: 8px;
+}
+
+.inspector h2 {
+  font-size: 16px;
+}
+
+.inspector-description {
+  font-size: 10px;
+  line-height: 1.65;
+}
+
+.inspector-status span,
+.inspector-status b {
+  font-size: 9px;
+}
+
+.inspector-actions button {
+  min-height: 40px;
+  font-size: 10px;
+}
+
+.inspector-empty p,
+.inspection-tip small {
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.library-tools {
+  gap: 8px;
+}
+
+.library-card strong {
+  font-size: 9px;
+}
+
+.library-card small {
+  font-size: 8px;
+}
+
+.setting-card h2 {
+  font-size: 13px;
+}
+
+.setting-card p {
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.setting-card > small {
+  font-size: 9px;
+}
+
+.mobile-quickbar {
+  display: none;
+}
+
+button,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid #e0b86f;
+  outline-offset: 2px;
+}
+
+@media (min-width: 721px) and (max-width: 900px) {
+  .workspace {
+    grid-template-columns: 184px minmax(0, 1fr);
+  }
+
+  .main-stage {
+    padding: 16px 13px;
+  }
+
+  .card-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 9px;
+  }
+
+  .inspector {
+    grid-column: 2;
+    border-left: 0;
+    border-top: 1px solid #59412e;
+  }
+
+  .inspector-art {
+    max-width: 240px;
+  }
+}
+
+@media (max-width: 720px) {
+  .app-shell {
+    min-height: 100vh;
+    overflow: visible;
+    overflow-x: clip;
+  }
+
+  .app-header {
+    min-height: 58px;
+    gap: 9px;
+    padding: 8px 12px;
+  }
+
+  .app-header .brand-emblem {
+    width: 33px;
+    height: 33px;
+    font-size: 21px;
+  }
+
+  .app-header .brand-name strong {
+    font-size: 14px;
+  }
+
+  .app-header .brand-name small,
+  .connection-status {
+    display: none;
+  }
+
+  .app-header .role-pill {
+    padding: 6px 8px;
+    font-size: 8px;
+  }
+
+  .main-nav {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    height: 50px;
+    gap: 0;
+    padding: 0 5px;
+    box-shadow: 0 5px 14px #0005;
+  }
+
+  .nav-tab {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 50px;
+    padding: 0 5px;
+    border-right: 1px solid #38282a;
+    font-size: clamp(9px, 2.8vw, 11px);
+    letter-spacing: 0;
+    white-space: nowrap;
+  }
+
+  .nav-tab span {
+    margin-right: 4px;
+    font-size: 13px;
+  }
+
+  .mobile-quickbar {
+    position: relative;
+    z-index: 3;
+    display: grid;
+    gap: 9px;
+    padding: 10px 12px 9px;
+    border-bottom: 1px solid rgba(195,154,84,.22);
+    background: linear-gradient(110deg, #21171a, #171216);
+  }
+
+  .mobile-deck-row {
+    display: flex;
+    align-items: end;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .mobile-deck-picker {
+    display: grid;
+    flex: 1 1 auto;
+    gap: 5px;
+    min-width: 0;
+  }
+
+  .mobile-deck-picker > span {
+    color: #bd9b66;
+    font-size: 8px;
+    font-weight: 800;
+    letter-spacing: .14em;
+  }
+
+  .mobile-deck-picker select {
+    width: 100%;
+    min-width: 0;
+    min-height: 42px;
+    padding: 8px 34px 8px 10px;
+    border: 1px solid #715438;
+    border-radius: 4px;
+    background: #120f12;
+    color: #f0e2c9;
+    font-size: 13px;
+  }
+
+  .mobile-new-deck {
+    flex: 0 0 auto;
+    min-height: 42px;
+    padding: 8px 12px;
+    border: 1px solid #9a7546;
+    border-radius: 4px;
+    background: linear-gradient(180deg, #805a35, #553925);
+    color: #fff0d1;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .mobile-category-strip {
+    display: flex;
+    gap: 6px;
+    min-width: 0;
+    overflow-x: auto;
+    padding: 1px 1px 4px;
+    scrollbar-width: thin;
+    scrollbar-color: #725335 transparent;
+    overscroll-behavior-x: contain;
+  }
+
+  .mobile-category {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 7px;
+    min-height: 34px;
+    padding: 6px 10px;
+    border: 1px solid #574031;
+    border-radius: 18px;
+    background: #1c1518;
+    color: #c0b19f;
+    font-size: 10px;
+    white-space: nowrap;
+  }
+
+  .mobile-category b {
+    color: #9b8360;
+    font-size: 9px;
+    font-weight: 600;
+  }
+
+  .mobile-category.active {
+    border-color: #bd9257;
+    background: #493027;
+    color: #f1d59e;
+  }
+
+  .mobile-category.active b {
+    color: #f0ca80;
+  }
+
+  .workspace {
+    display: block;
+    min-height: auto;
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+
+  .sidebar {
+    display: none;
+  }
+
+  .main-stage {
+    display: flex;
+    min-width: 0;
+    min-height: 55vh;
+    padding: 12px 12px 26px;
+  }
+
+  .deck-stage-heading {
+    display: none;
+  }
+
+  .stage-heading {
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .stage-heading h1,
+  .settings-view h1 {
+    font-size: 18px;
+  }
+
+  .stage-heading p,
+  .view-intro {
+    font-size: 10px;
+    line-height: 1.5;
+  }
+
+  .card-toolbar {
+    display: grid;
+    align-items: stretch;
+    gap: 9px;
+    margin: 2px 0 12px;
+    padding-bottom: 10px;
+  }
+
+  .toolbar-label {
+    font-size: 10px;
+  }
+
+  .toolbar-tools {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 7px;
+    width: 100%;
+  }
+
+  .toolbar-tools .search-box {
+    grid-column: 1 / -1;
+    min-width: 0;
+    min-height: 42px;
+  }
+
+  .toolbar-tools .search-box input {
+    min-height: 40px;
+    font-size: 13px;
+  }
+
+  .toolbar-tools select {
+    width: 100%;
+    max-width: none;
+    min-height: 42px;
+    font-size: 12px;
+  }
+
+  .toolbar-tools .new-card-button {
+    min-height: 42px;
+    padding: 8px 12px;
+    font-size: 11px;
+  }
+
+  .card-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 9px;
+    padding: 0 0 18px;
+  }
+
+  .card-grid.size-small {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .card-grid.size-large {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .table-card {
+    border-radius: 5px;
+  }
+
+  .table-card-copy {
+    padding: 8px;
+  }
+
+  .table-card-copy > span {
+    font-size: 8px;
+  }
+
+  .table-card-copy strong {
+    font-size: 10px;
+    line-height: 1.35;
+  }
+
+  .state-label {
+    font-size: 8px;
+  }
+
+  .card-more {
+    width: 29px;
+    height: 27px;
+    border-radius: 4px;
+    font-size: 11px;
+    opacity: 1;
+  }
+
+  .empty-library {
+    min-height: 170px;
+    padding: 18px;
+  }
+
+  .empty-library strong {
+    font-size: 14px;
+  }
+
+  .empty-library small {
+    font-size: 10px;
+    line-height: 1.5;
+  }
+
+  .inspector {
+    display: none;
+  }
+
+  .inspector:not(.has-selection) {
+    display: none;
+  }
+
+  .inspector.has-selection {
+    position: fixed;
+    z-index: 90;
+    right: 10px;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    left: 10px;
+    display: block;
+    max-height: min(66dvh, 560px);
+    overflow-y: auto;
+    padding: 14px;
+    border: 1px solid #9a7548;
+    border-radius: 10px;
+    background: linear-gradient(155deg, #261b1e, #110e11 85%);
+    box-shadow: 0 18px 60px #000e, 0 0 0 1px #d6ad6920;
+    overscroll-behavior: contain;
+  }
+
+  .inspector-heading {
+    position: sticky;
+    top: -14px;
+    z-index: 2;
+    min-height: 36px;
+    margin: -14px -14px 12px;
+    padding: 8px 14px;
+    background: #21171b;
+    font-size: 9px;
+  }
+
+  .inspector-heading button {
+    width: 32px;
+    height: 32px;
+    font-size: 20px;
+  }
+
+  .inspector-art {
+    width: min(100%, 190px);
+    height: clamp(100px, 17vh, 155px);
+    margin: 0 auto;
+  }
+
+  .inspector-category {
+    margin-top: 10px;
+    font-size: 8px;
+  }
+
+  .inspector h2 {
+    margin: 4px 0;
+    font-size: 16px;
+  }
+
+  .inspector-description {
+    min-height: 0;
+    font-size: 11px;
+    line-height: 1.5;
+  }
+
+  .inspector-status {
+    margin-top: 9px;
+    padding: 7px 0;
+  }
+
+  .inspector-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+    margin-top: 9px;
+  }
+
+  .inspector-actions button {
+    min-height: 42px;
+    padding: 8px;
+    font-size: 10px;
+  }
+
+  .inspector-actions .wide {
+    grid-column: 1 / -1;
+  }
+
+  .inspector-row {
+    display: contents;
+  }
+
+  .inspector-actions .delete-card-action {
+    grid-column: 1 / -1;
+  }
+
+  .library-view,
+  .settings-view {
+    width: 100%;
+  }
+
+  .library-tools {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .library-tools .search-box,
+  .library-tools select {
+    width: 100%;
+    max-width: none;
+    min-height: 42px;
+  }
+
+  .library-tools .search-box input {
+    font-size: 13px;
+  }
+
+  .library-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .library-card {
+    gap: 6px;
+    padding: 7px;
+    border-radius: 5px;
+  }
+
+  .library-card strong {
+    font-size: 10px;
+  }
+
+  .library-card small {
+    font-size: 8px;
+  }
+
+  .settings-grid {
+    grid-template-columns: 1fr;
+    gap: 9px;
+    margin-top: 14px;
+  }
+
+  .setting-card {
+    min-height: 0;
+    padding: 14px;
+    border-radius: 6px;
+  }
+
+  .setting-card h2 {
+    font-size: 14px;
+  }
+
+  .setting-card p {
+    min-height: 0;
+    font-size: 11px;
+  }
+
+  .size-options button,
+  .setting-actions button,
+  .setting-card > button {
+    min-height: 42px;
+    font-size: 11px;
+  }
+
+  .notice {
+    margin: 7px 10px 0;
+    padding: 10px;
+    font-size: 10px;
+    line-height: 1.45;
+  }
+
+  .modal-backdrop {
+    align-items: end;
+    padding: 8px 8px max(8px, env(safe-area-inset-bottom));
+  }
+
+  .editor-modal {
+    width: 100%;
+    max-height: 90dvh;
+    gap: 12px;
+    padding: 15px;
+    border-radius: 10px 10px 7px 7px;
+  }
+
+  .modal-heading h2 {
+    font-size: 18px;
+  }
+
+  .editor-modal label {
+    gap: 6px;
+    font-size: 11px;
+  }
+
+  .editor-modal input,
+  .editor-modal select,
+  .editor-modal textarea {
+    min-height: 44px;
+    padding: 10px;
+    border-radius: 4px;
+    font-size: 16px;
+  }
+
+  .editor-modal textarea {
+    min-height: 100px;
+  }
+
+  .editor-image-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .editor-image-row label button {
+    min-height: 40px;
+    border-radius: 4px;
+    font-size: 10px;
+  }
+
+  .modal-actions {
+    position: sticky;
+    bottom: -15px;
+    margin: 0 -15px -15px;
+    padding: 10px 15px max(10px, env(safe-area-inset-bottom));
+    background: #171216;
+  }
+
+  .modal-actions button {
+    min-height: 44px;
+    padding: 9px 14px;
+    border-radius: 4px;
+    font-size: 11px;
+  }
+
+  .reveal-backdrop {
+    padding: 12px;
+  }
+
+  .reveal-card {
+    width: 100%;
+    max-width: 470px;
+    max-height: 90dvh;
+    border-radius: 7px;
+  }
+
+  .reveal-art {
+    min-height: 150px;
+    padding: 12px;
+  }
+
+  .reveal-art img {
+    max-height: 55dvh;
+  }
+
+  .reveal-info h2 {
+    font-size: 18px;
+  }
+
+  .reveal-info p {
+    font-size: 11px;
+  }
+
+  .player-screen {
+    padding: 16px 13px;
+  }
+
+  .player-header strong {
+    font-size: 14px;
+  }
+
+  .player-reveal {
+    margin: 22px auto;
+  }
+
+  .player-reveal > img {
+    max-width: 95%;
+    max-height: 58dvh;
+  }
+
+  .player-card-info h1 {
+    font-size: 20px;
+  }
+
+  .player-card-info p,
+  .player-waiting p {
+    font-size: 11px;
+  }
+
+  .player-waiting {
+    margin: 16vh auto 0;
+    padding: 0 8px;
+  }
+
+  .player-card-placeholder {
+    width: min(72vw, 240px);
+    height: min(100vw, 340px);
+  }
+}
+
+@media (max-width: 390px) {
+  .nav-tab {
+    font-size: 9px;
+    padding: 0 3px;
+  }
+
+  .nav-tab span {
+    margin-right: 2px;
+    font-size: 12px;
+  }
+
+  .main-stage {
+    padding-right: 9px;
+    padding-left: 9px;
+  }
+
+  .card-grid,
+  .card-grid.size-small {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+  }
+
+  .library-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .toolbar-tools {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .toolbar-tools select,
+  .toolbar-tools .new-card-button {
+    width: 100%;
+  }
+}
+
+@media (hover: none) {
+  .card-more {
+    opacity: 1;
+  }
+
+  .table-card:hover,
+  .library-card:hover {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-category-strip {
+    scroll-behavior: auto;
+  }
+}
