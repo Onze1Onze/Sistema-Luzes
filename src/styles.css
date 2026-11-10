@@ -689,6 +689,10 @@ textarea:focus-visible {
     font-size: 13px;
   }
 
+  .nav-spacer {
+    display: none;
+  }
+
   .mobile-quickbar {
     position: relative;
     z-index: 3;
