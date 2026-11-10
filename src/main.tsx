@@ -6,6 +6,3 @@ import "./styles.css";
 const root = createRoot(document.getElementById("root")!);
 root.render(<React.StrictMode><App /></React.StrictMode>);
 
-OBR.onReady(() => {
-  document.documentElement.dataset.obr = "ready";
-});
