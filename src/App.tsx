@@ -361,17 +361,17 @@ export default function App() {
   if (role === "PLAYER") {
     return (
       <div className="player-screen">
-        <header className="player-header"><div className="brand-emblem">✦</div><div><strong>DECK & CARDS</strong><span>ÁREA DOS JOGADORES</span></div><span className="role-pill">JOGADOR</span></header>
+        <header className="player-header"><div className="brand-emblem">✦</div><div><strong>DECK & CARDS</strong></div><span className="role-pill">JOGADOR</span></header>
         {revealedCard ? (
           <div className="player-reveal">
-            <div className="reveal-caption">CARTA REVELADA PELO MESTRE</div>
+            
             {revealedCard.frontUrl || revealedCard.backUrl
               ? <img src={revealedCard.frontUrl || revealedCard.backUrl} alt={revealedCard.name} />
               : <div className="player-card-placeholder">✦</div>}
             <div className="player-card-info"><span>{revealedCard.category}</span><h1>{revealedCard.name}</h1><p>{revealedCard.description}</p></div>
           </div>
         ) : (
-          <div className="player-waiting"><div className="waiting-seal">✦</div><h1>A mesa aguarda.</h1><p>Quando o Mestre revelar uma carta, ela aparecerá aqui para todos os jogadores.</p></div>
+          <div className="player-waiting"><div className="waiting-seal">✦</div><h1>A mesa aguarda.</h1></div>
         )}
       </div>
     );
@@ -383,7 +383,7 @@ export default function App() {
         <div className="brand-emblem" aria-hidden="true">✦</div>
         <div className="brand-name">
           <strong>DECK <span>&amp;</span> CARDS</strong>
-          <small>EXTENSÃO PARA OWLBEAR RODEO</small>
+          
         </div>
         <div className="app-header-meta">
           <span className={obrReady ? "connection-status" : "connection-status is-connecting"}><i /> {obrReady ? "Conectado à sala" : "Conectando à sala"}</span>
@@ -401,7 +401,7 @@ export default function App() {
       <section className="mobile-quickbar" aria-label="Atalhos do baralho">
         <div className="mobile-deck-row">
           <label className="mobile-deck-picker">
-            <span>BARALHO ATUAL</span>
+            
             <select
               value={activeDeck?.id ?? ""}
               onChange={(event) => void selectDeck(event.target.value)}
@@ -474,19 +474,19 @@ export default function App() {
         <main className="main-stage">
           {view === "settings" ? (
             <section className="settings-view">
-              <div className="view-kicker">MESA DO MESTRE / PREFERÊNCIAS</div>
+              
               <h1>Configurações da coleção</h1>
-              <p className="view-intro">Ajuste a apresentação das cartas e gerencie os arquivos compartilhados desta sala.</p>
+              
               <div className="settings-grid">
-                <article className="setting-card"><span className="setting-icon">▤</span><h2>Tamanho das cartas</h2><p>Escolha a escala usada na mesa de gerenciamento.</p><div className="size-options"><button className={deck.cardSize === "small" ? "chosen" : ""} onClick={() => void persist({ ...deck, cardSize: "small" })}>Pequena</button><button className={deck.cardSize === "medium" ? "chosen" : ""} onClick={() => void persist({ ...deck, cardSize: "medium" })}>Média</button><button className={deck.cardSize === "large" ? "chosen" : ""} onClick={() => void persist({ ...deck, cardSize: "large" })}>Grande</button></div></article>
-                <article className="setting-card"><span className="setting-icon">⇅</span><h2>Importar e exportar</h2><p>Faça uma cópia de segurança de todos os baralhos, cartas e imagens vinculadas por URL.</p><div className="setting-actions"><button onClick={() => void importDeck()}>Importar coleção</button><button className="gold-button" onClick={exportDeck}>Exportar coleção</button></div></article>
-                <article className="setting-card"><span className="setting-icon">♜</span><h2>Espaço da sala</h2><p>O armazenamento compartilhado usa o metadata da sala do Owlbear Rodeo.</p><div className="storage-meter"><span style={{ width: `${Math.min(100, (new TextEncoder().encode(JSON.stringify(deck)).length / (16 * 1024)) * 100)}%` }} /></div><small>{new TextEncoder().encode(JSON.stringify(deck)).length.toLocaleString("pt-BR")} bytes de 16 KB usados nesta coleção</small></article>
+                <article className="setting-card"><span className="setting-icon">▤</span><h2>Tamanho das cartas</h2><div className="size-options"><button className={deck.cardSize === "small" ? "chosen" : ""} onClick={() => void persist({ ...deck, cardSize: "small" })}>Pequena</button><button className={deck.cardSize === "medium" ? "chosen" : ""} onClick={() => void persist({ ...deck, cardSize: "medium" })}>Média</button><button className={deck.cardSize === "large" ? "chosen" : ""} onClick={() => void persist({ ...deck, cardSize: "large" })}>Grande</button></div></article>
+                <article className="setting-card"><span className="setting-icon">⇅</span><h2>Importar e exportar</h2><div className="setting-actions"><button onClick={() => void importDeck()}>Importar coleção</button><button className="gold-button" onClick={exportDeck}>Exportar coleção</button></div></article>
+                <article className="setting-card"><span className="setting-icon">♜</span><h2>Espaço da sala</h2><div className="storage-meter"><span style={{ width: `${Math.min(100, (new TextEncoder().encode(JSON.stringify(deck)).length / (16 * 1024)) * 100)}%` }} /></div><small>{new TextEncoder().encode(JSON.stringify(deck)).length.toLocaleString("pt-BR")} bytes de 16 KB usados nesta coleção</small></article>
                 <article className="setting-card"><span className="setting-icon">✦</span><h2>Baralhos da sala</h2><p>{deck.decks.length} baralhos • {deck.decks.reduce((sum, item) => sum + item.cards.length, 0)} cartas armazenadas.</p><button onClick={() => void createDeck()}>＋ Criar novo baralho</button></article>
               </div>
             </section>
           ) : view === "library" ? (
             <section className="library-view">
-              <div className="stage-heading"><div><div className="view-kicker">ACERVO COMPARTILHADO</div><h1>Biblioteca de cartas</h1><p>Visualize todas as cartas existentes em seus baralhos.</p></div><span className="total-counter">{libraryCards.length} RESULTADOS</span></div>
+              <div className="stage-heading"><div><h1>Biblioteca de cartas</h1></div><span className="total-counter">{libraryCards.length} RESULTADOS</span></div>
               <div className="library-tools"><label className="search-box"><span>⌕</span><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar nome ou descrição..." /></label><select value={category} onChange={(e) => setCategory(e.target.value)}><option value="Todas">Todas as categorias</option>{CATEGORIES.map((item) => <option key={item}>{item}</option>)}</select></div>
               <div className="library-grid">
                 {libraryCards.length === 0 && <div className="empty-library">Nenhuma carta corresponde a esta busca.</div>}
@@ -502,9 +502,9 @@ export default function App() {
             <>
               <div className="stage-heading deck-stage-heading">
                 <div>
-                  <div className="view-kicker">MESA DO MESTRE / BARALHO ATIVO</div>
+                  
                   <h1>{activeDeck?.name ?? "Baralho"}</h1>
-                  <p>Organize as cartas, escolha uma e revele para todos os jogadores.</p>
+                  
                 </div>
                 <span className="total-counter">{totalCount} CARTAS</span>
               </div>
@@ -515,7 +515,7 @@ export default function App() {
               </div>
 
               <div className={`card-grid size-${deck.cardSize}`}>
-                {filteredCards.length === 0 && <div className="empty-library"><span>✦</span><strong>Este baralho está vazio</strong><small>Crie uma carta para começar a montar sua coleção.</small><button className="gold-button" onClick={() => void createCard()}>＋ Criar primeira carta</button></div>}
+                {filteredCards.length === 0 && <div className="empty-library"><span>✦</span><strong>Este baralho está vazio</strong><button className="gold-button" onClick={() => void createCard()}>＋ Criar primeira carta</button></div>}
                 {filteredCards.map((card, index) => (
                   <article
                     key={card.id}
@@ -528,7 +528,7 @@ export default function App() {
                     onDoubleClick={() => setEditing({ ...card })}
                   >
                     <div className="table-card-art">
-                      {cardImage(card) ? <img src={cardImage(card)} alt="" /> : <div className="card-placeholder"><span>✦</span><small>DECK & CARDS</small></div>}
+                      {cardImage(card) ? <img src={cardImage(card)} alt="" /> : <div className="card-placeholder"><span>✦</span></div>}
                       <span className="card-number">{String(index + 1).padStart(2, "0")}</span>
                       <button className="card-more" onClick={(event) => { event.stopPropagation(); setSelectedId(card.id); setEditing({ ...card }); }} aria-label="Editar carta">•••</button>
                       <div className="card-art-gradient" />
@@ -549,7 +549,7 @@ export default function App() {
               <>
                 <div className="inspector-heading"><span>DETALHES DA CARTA</span><button onClick={() => setSelectedId(null)} aria-label="Fechar detalhes">×</button></div>
                 <div className="inspector-art">
-                  {cardImage(selectedCard) ? <img src={cardImage(selectedCard)} alt={selectedCard.name} /> : <div className="card-placeholder"><span>✦</span><small>DECK & CARDS</small></div>}
+                  {cardImage(selectedCard) ? <img src={cardImage(selectedCard)} alt={selectedCard.name} /> : <div className="card-placeholder"><span>✦</span></div>}
                 </div>
                 <div className="inspector-category">{selectedCard.category}</div>
                 <h2>{selectedCard.name}</h2>
@@ -558,7 +558,7 @@ export default function App() {
                 <div className="inspector-actions"><button className="gold-button wide" onClick={() => void reveal(selectedCard)}>✦ Revelar para todos</button><button onClick={() => setEditing({ ...selectedCard })}>✎ Editar carta</button><button onClick={() => void duplicateCard(selectedCard)}>▣ Duplicar</button><button onClick={() => void discard(selectedCard)}>↘ Descartar</button><div className="inspector-row"><button onClick={() => void moveCard(selectedCard.id, -1)}>← Mover</button><button onClick={() => void moveCard(selectedCard.id, 1)}>Mover →</button></div><button className="delete-card-action" onClick={() => void deleteCard(selectedCard.id)}>Excluir carta</button></div>
               </>
             ) : (
-              <div className="inspector-empty"><div className="inspector-seal">✦</div><span>ÁREA DE INSPEÇÃO</span><h2>Selecione uma carta</h2><p>Clique em uma carta para ver seus detalhes e acessar as ações do Mestre.</p><div className="inspection-tip"><b>DICA DA MESA</b><small>Dê um duplo clique em qualquer carta para abrir o editor completo.</small></div></div>
+              <div className="inspector-empty"><div className="inspector-seal">✦</div><h2>Selecione uma carta</h2><div className="inspection-tip"><b>DICA DA MESA</b><small>Dê um duplo clique em qualquer carta para abrir o editor completo.</small></div></div>
             )}
           </aside>
         )}
@@ -567,7 +567,7 @@ export default function App() {
       {editing && (
         <div className="modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && setEditing(null)}>
           <form className="editor-modal" onSubmit={(event) => { event.preventDefault(); patchCard(editing.id, editing); setEditing(null); }}>
-            <div className="modal-heading"><div><span>OFICINA DO MESTRE</span><h2>Configurar carta</h2></div><button type="button" onClick={() => setEditing(null)}>×</button></div>
+            <div className="modal-heading"><div><h2>Configurar carta</h2></div><button type="button" onClick={() => setEditing(null)}>×</button></div>
             <label>Nome da carta<input value={editing.name} onChange={(event) => setEditing({ ...editing, name: event.target.value })} required /></label>
             <label>Categoria<select value={editing.category} onChange={(event) => setEditing({ ...editing, category: event.target.value })}>{CATEGORIES.map((item) => <option key={item}>{item}</option>)}</select></label>
             <label>Descrição<textarea rows={4} value={editing.description} onChange={(event) => setEditing({ ...editing, description: event.target.value })} /></label>
@@ -587,7 +587,7 @@ export default function App() {
             <button className="close-reveal" onClick={() => void hideReveal()} aria-label="Fechar">×</button>
             <div className="reveal-art">{revealedCard.frontUrl || revealedCard.backUrl ? <img src={revealedCard.frontUrl || revealedCard.backUrl} alt={revealedCard.name} /> : <div className="player-card-placeholder">✦</div>}</div>
             <div className="reveal-info"><span>{revealedCard.category}</span><h2>{revealedCard.name}</h2>{revealedCard.description && <p>{revealedCard.description}</p>}</div>
-            <div className="reveal-footer">REVELADA PARA TODOS OS JOGADORES</div>
+            
           </div>
         </div>
       )}
