@@ -1,596 +1,1198 @@
-import { useEffect, useMemo, useState } from "react";
-import OBR, { buildImageUpload } from "@owlbear-rodeo/sdk";
-import { broadcastReveal, subscribeDeck, subscribeReveal } from "./sync";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import OBR from "@owlbear-rodeo/sdk";
 import { loadDeck, normalizeDeckState, saveDeck } from "./storage";
-import { Card, CardDeck, CardSize, DeckState, EMPTY_DECK } from "./types";
+import { broadcastReveal, subscribeDeck, subscribeReveal } from "./sync";
+import {
+  Card,
+  CardDeck,
+  CardSize,
+  CardVisibility,
+  DeckState,
+  EMPTY_DECK,
+} from "./types";
 
-const CATEGORIES = ["Equipamento", "Evento", "Inimigo", "Pista", "Local", "NPC", "Habilidade", "Condição", "Item", "Narrativa", "Outros"];
-type View = "decks" | "library" | "settings";
+const MAX_META_BYTES = 16 * 1024;
+const WARN_META_BYTES = 14 * 1024;
 
-function blankCard(): Card {
+type FilterMode = "ALL" | CardVisibility;
+
+interface CardForm {
+  id: string | null;
+  name: string;
+  category: string;
+  frontUrl: string;
+  backUrl: string;
+  description: string;
+  visibility: CardVisibility;
+}
+
+const VISIBILITY_LABEL: Record<CardVisibility, string> = {
+  REVEALED: "Revelada",
+  AVAILABLE: "Disponível",
+  HIDDEN: "Oculta",
+  DISCARDED: "Descartada",
+};
+
+function makeId(prefix: string): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
+  }
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function emptyCardForm(card?: Card): CardForm {
+  if (card) {
+    return {
+      id: card.id,
+      name: card.name,
+      category: card.category,
+      frontUrl: card.frontUrl,
+      backUrl: card.backUrl,
+      description: card.description,
+      visibility: card.visibility,
+    };
+  }
   return {
-    id: crypto.randomUUID(),
-    name: "Nova carta",
+    id: null,
+    name: "",
+    category: "",
     frontUrl: "",
     backUrl: "",
     description: "",
-    category: "Outros",
-    visibility: "AVAILABLE",
-    selected: false,
-    createdAt: Date.now()
+    visibility: "HIDDEN",
   };
-}
+}export default function App() {
+  const [state, setState] = useState<DeckState>(EMPTY_DECK);
+  const [role, setRole] = useState<"GM" | "PLAYER">("GM");
+  const [ready, setReady] = useState(false);
+  const [filter, setFilter] = useState<FilterMode>("ALL");
+  const [search, setSearch] = useState("");
+  const [toast, setToast] = useState<string | null>(null);
+  const [cardModal, setCardModal] = useState<CardForm | null>(null);
+  const [decksModalOpen, setDecksModalOpen] = useState(false);
+  const [newDeckName, setNewDeckName] = useState("");
+  const [renameDeckName, setRenameDeckName] = useState("");
+  const [previewCard, setPreviewCard] = useState<Card | null>(null);
 
-function makeDeck(name: string): CardDeck {
-  const now = Date.now();
-  return {
-    id: crypto.randomUUID(),
-    name,
-    cards: [],
-    revealedCardId: null,
-    createdAt: now,
-    updatedAt: now
-  };
-}
-
-function cardImage(card: Card): string {
-  return card.visibility === "HIDDEN"
-    ? card.backUrl || card.frontUrl
-    : card.frontUrl || card.backUrl;
-}
-
-export default function App() {
-  const [deck, setDeck] = useState<DeckState>(EMPTY_DECK);
-  const [role, setRole] = useState<"GM" | "PLAYER" | null>(null);
-  const [obrReady, setObrReady] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [editing, setEditing] = useState<Card | null>(null);
-  const [query, setQuery] = useState("");
-  const [category, setCategory] = useState("Todas");
-  const [view, setView] = useState<View>("decks");
-  const [error, setError] = useState("");
-  const [status, setStatus] = useState("");
-
-  const isGM = role === "GM";
-  const activeDeck = deck.decks.find((item) => item.id === deck.activeDeckId) ?? deck.decks[0];
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+  }, []);
 
   useEffect(() => {
-    let unsubDeck = () => {};
-    let unsubReveal = () => {};
-    let mounted = true;
-    let initStarted = false;
-    let initializationComplete = false;
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 3500);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
-    const readinessTimeout = window.setTimeout(() => {
-      if (mounted && !initializationComplete) {
-        setError("O Owlbear não respondeu à inicialização. Feche e abra a extensão novamente.");
-      }
+  useEffect(() => {
+    if (!OBR.isAvailable) {
+      setRole("GM");
+      setReady(true);
+      return;
+    }
+
+    let active = true;
+    let unsubDeck: (() => void) | undefined;
+    let unsubReveal: (() => void) | undefined;
+    let unsubRole: (() => void) | undefined;
+
+    const timeout = window.setTimeout(() => {
+      if (active) setReady(true);
     }, 8000);
 
-    // OBR.onReady registra um callback; não é uma Promise e não deve ser aguardado com await.
-    OBR.onReady(() => {
-      if (!mounted || initStarted) return;
-      initStarted = true;
+    OBR.onReady(async () => {
+      if (!active) return;
+      window.clearTimeout(timeout);
+      try {
+        const [currentRole, loaded] = await Promise.all([
+          OBR.player.getRole(),
+          loadDeck(),
+        ]);
+        if (!active) return;
+        setRole(currentRole);
+        setState(loaded);
 
-      void (async () => {
-        try {
-          const currentRole = await OBR.player.getRole();
-          if (!mounted) return;
+        unsubRole = OBR.player.onChange((player) => {
+          setRole(player.role);
+        });
 
-          setRole(currentRole);
-          unsubDeck = subscribeDeck((next) => setDeck(normalizeDeckState(next)));
-          unsubReveal = subscribeReveal(({ cardId }) => {
-            setDeck((prev) => ({
-              ...prev,
-              decks: prev.decks.map((item) => item.id === prev.activeDeckId
-                ? { ...item, revealedCardId: cardId, updatedAt: Date.now() }
-                : item)
-            }));
-          });
+        unsubDeck = subscribeDeck((next) => {
+          if (next) {
+            setState(normalizeDeckState(next));
+          }
+        });
 
-          // Libera a interface assim que o contexto e o perfil estiverem prontos.
-          setObrReady(true);
-          initializationComplete = true;
-          window.clearTimeout(readinessTimeout);
-
-          // A leitura dos baralhos acontece em segundo plano e não bloqueia a janela.
-          void loadDeck()
-            .then((initialDeck) => {
-              if (mounted) setDeck(initialDeck);
-            })
-            .catch((e) => {
-              if (mounted) setError(e instanceof Error ? e.message : "Não foi possível carregar a coleção.");
-            });
-        } catch (e) {
-          if (!mounted) return;
-          initializationComplete = true;
-          window.clearTimeout(readinessTimeout);
-          setError(e instanceof Error ? e.message : "Não foi possível conectar ao Owlbear Rodeo.");
-        }
-      })();
+        unsubReveal = subscribeReveal((cardId) => {
+          setState((prev) => ({
+            ...prev,
+            decks: prev.decks.map((d) => {
+              if (d.id !== prev.activeDeckId) return d;
+              return {
+                ...d,
+                revealedCardId: cardId,
+                cards: d.cards.map((c) => {
+                  if (cardId && c.id === cardId) {
+                    return { ...c, visibility: "REVEALED" as CardVisibility };
+                  }
+                  if (c.visibility === "REVEALED" && c.id !== cardId) {
+                    return { ...c, visibility: "AVAILABLE" as CardVisibility };
+                  }
+                  return c;
+                }),
+              };
+            }),
+          }));
+        });
+      } catch (e) {
+        showToast(e instanceof Error ? e.message : "Erro ao conectar ao Owlbear Rodeo.");
+      } finally {
+        if (active) setReady(true);
+      }
     });
 
     return () => {
-      mounted = false;
-      window.clearTimeout(readinessTimeout);
-      unsubDeck();
-      unsubReveal();
+      active = false;
+      window.clearTimeout(timeout);
+      unsubDeck?.();
+      unsubReveal?.();
+      unsubRole?.();
     };
-  }, []);
+  }, [showToast]);
 
-  const selectedCard = activeDeck?.cards.find((card) => card.id === selectedId) ?? null;
-  const revealedCard = activeDeck?.cards.find((card) => card.id === activeDeck.revealedCardId) ?? null;
+  const activeDeck = useMemo(
+    () => state.decks.find((d) => d.id === state.activeDeckId) ?? state.decks[0],
+    [state]
+  );
 
-  const filteredCards = useMemo(() => {
-    const q = query.trim().toLocaleLowerCase();
-    return (activeDeck?.cards ?? []).filter((card) => {
-      const textMatch = !q || `${card.name} ${card.description}`.toLocaleLowerCase().includes(q);
-      const categoryMatch = category === "Todas" || card.category === category;
-      return textMatch && categoryMatch;
-    });
-  }, [activeDeck, query, category]);
+  const metaBytes = useMemo(
+    () => new TextEncoder().encode(JSON.stringify(state)).length,
+    [state]
+  );
 
-  const libraryCards = useMemo(() => {
-    const q = query.trim().toLocaleLowerCase();
-    return deck.decks.flatMap((group) => group.cards.map((card) => ({ card, deckId: group.id, deckName: group.name })))
-      .filter(({ card }) => {
-        const textMatch = !q || `${card.name} ${card.description}`.toLocaleLowerCase().includes(q);
-        const categoryMatch = category === "Todas" || card.category === category;
-        return textMatch && categoryMatch;
+  const persist = useCallback(
+    async (next: DeckState) => {
+      const normalized = normalizeDeckState({
+        ...next,
+        updatedAt: Date.now(),
       });
-  }, [deck.decks, query, category]);
-
-  const availableCount = (activeDeck?.cards ?? []).filter((card) => card.visibility === "AVAILABLE").length;
-  const hiddenCount = (activeDeck?.cards ?? []).filter((card) => card.visibility === "HIDDEN").length;
-  const discardedCount = (activeDeck?.cards ?? []).filter((card) => card.visibility === "DISCARDED").length;
-  const totalCount = (activeDeck?.cards ?? []).length;
-
-  async function persist(next: DeckState) {
-    if (!obrReady) return;
-    setError("");
-    setStatus("");
-    try {
-      setDeck(next);
-      await saveDeck(next);
-      setStatus("Coleção sincronizada");
-      window.setTimeout(() => setStatus(""), 1500);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Falha ao salvar a coleção.");
-    }
-  }
-
-  function withActiveDeck(patch: Partial<CardDeck>): DeckState {
-    return {
-      ...deck,
-      decks: deck.decks.map((item) => item.id === activeDeck.id
-        ? { ...item, ...patch, updatedAt: Date.now() }
-        : item)
-    };
-  }
-
-  async function selectDeck(id: string) {
-    await persist({ ...deck, activeDeckId: id });
-    setSelectedId(null);
-    setQuery("");
-    setCategory("Todas");
-    setView("decks");
-  }
-
-  async function createDeck() {
-    const nextDeck = makeDeck(`Baralho ${deck.decks.length + 1}`);
-    await persist({ ...deck, decks: [...deck.decks, nextDeck], activeDeckId: nextDeck.id });
-    setSelectedId(null);
-    setView("decks");
-  }
-
-  async function deleteDeck(item: CardDeck) {
-    if (deck.decks.length <= 1) {
-      setError("A coleção precisa manter ao menos um baralho.");
-      return;
-    }
-    if (!window.confirm(`Excluir o baralho “${item.name}” e todas as cartas dele?`)) return;
-    const remaining = deck.decks.filter((entry) => entry.id !== item.id);
-    const nextActiveId = item.id === deck.activeDeckId ? remaining[0].id : deck.activeDeckId;
-    await persist({ ...deck, decks: remaining, activeDeckId: nextActiveId });
-    setSelectedId(null);
-  }
-
-  function patchCard(id: string, patch: Partial<Card>) {
-    const cards = activeDeck.cards.map((card) => card.id === id ? { ...card, ...patch } : card);
-    void persist(withActiveDeck({ cards }));
-  }
-
-  async function createCard() {
-    const card = blankCard();
-    await persist(withActiveDeck({ cards: [...activeDeck.cards, card] }));
-    setSelectedId(card.id);
-    setEditing(card);
-  }
-
-  async function duplicateCard(card: Card) {
-    const copy = { ...card, id: crypto.randomUUID(), name: `${card.name} — cópia`, selected: false, createdAt: Date.now() };
-    await persist(withActiveDeck({ cards: [...activeDeck.cards, copy] }));
-    setSelectedId(copy.id);
-  }
-
-  async function deleteCard(id: string) {
-    const cards = activeDeck.cards.filter((card) => card.id !== id);
-    const revealedCardId = activeDeck.revealedCardId === id ? null : activeDeck.revealedCardId;
-    await persist(withActiveDeck({ cards, revealedCardId }));
-    if (selectedId === id) setSelectedId(null);
-  }
-
-  async function reveal(card: Card) {
-    if (!isGM) return;
-    const cards = activeDeck.cards.map((item) => ({
-      ...item,
-      selected: item.id === card.id,
-      visibility: item.id === card.id ? "REVEALED" as const : item.visibility
-    }));
-    await persist(withActiveDeck({ cards, revealedCardId: card.id }));
-    await broadcastReveal(card.id);
-  }
-
-  async function hideReveal() {
-    if (!isGM) return;
-    const cards = activeDeck.cards.map((card) => card.visibility === "REVEALED"
-      ? { ...card, visibility: "AVAILABLE" as const }
-      : card);
-    await persist(withActiveDeck({ revealedCardId: null, cards }));
-    await broadcastReveal(null);
-  }
-
-  async function discard(card: Card) {
-    await persist(withActiveDeck({
-      cards: activeDeck.cards.map((item) => item.id === card.id
-        ? { ...item, visibility: "DISCARDED", selected: false }
-        : item),
-      revealedCardId: activeDeck.revealedCardId === card.id ? null : activeDeck.revealedCardId
-    }));
-    if (activeDeck.revealedCardId === card.id) await broadcastReveal(null);
-  }
-
-  async function shuffle() {
-    const cards = [...activeDeck.cards];
-    for (let i = cards.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [cards[i], cards[j]] = [cards[j], cards[i]];
-    }
-    await persist(withActiveDeck({ cards }));
-  }
-
-  async function moveCard(id: string, direction: -1 | 1) {
-    const index = activeDeck.cards.findIndex((card) => card.id === id);
-    const target = index + direction;
-    if (index < 0 || target < 0 || target >= activeDeck.cards.length) return;
-    const cards = [...activeDeck.cards];
-    [cards[index], cards[target]] = [cards[target], cards[index]];
-    await persist(withActiveDeck({ cards }));
-  }
-
-  async function drawRandom() {
-    const candidates = activeDeck.cards.filter((card) => card.visibility === "AVAILABLE" || card.visibility === "HIDDEN");
-    if (candidates.length === 0) {
-      setError("Não há cartas disponíveis para sortear neste baralho.");
-      return;
-    }
-    const card = candidates[Math.floor(Math.random() * candidates.length)];
-    await reveal(card);
-  }
-
-  async function chooseAsset(field: "frontUrl" | "backUrl") {
-    try {
-      const downloads = await OBR.assets.downloadImages(false, undefined, "ATTACHMENT");
-      const image = downloads[0]?.image;
-      if (!image) return;
-      if (editing) setEditing({ ...editing, [field]: image.url });
-      else if (selectedCard) patchCard(selectedCard.id, { [field]: image.url });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Não foi possível abrir a biblioteca de imagens.");
-    }
-  }
-
-  async function importDeck() {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "application/json,.json";
-    input.onchange = async () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      try {
-        const imported = normalizeDeckState(JSON.parse(await file.text()));
-        await persist(imported);
-        setSelectedId(null);
-        setView("decks");
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Arquivo de coleção inválido.");
+      const bytes = new TextEncoder().encode(JSON.stringify(normalized)).length;
+      if (bytes > MAX_META_BYTES) {
+        showToast(
+          `Limite de 16 KB excedido (${(bytes / 1024).toFixed(1)} KB). Reduza textos ou cartas.`
+        );
+        return false;
       }
-    };
-    input.click();
-  }
-
-  function exportDeck() {
-    const payload = JSON.stringify(deck, null, 2);
-    const blob = new Blob([payload], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = "sistema-cartas-colecao.json";
-    anchor.click();
-    URL.revokeObjectURL(url);
-  }
-
-  async function uploadFromFile(field: "frontUrl" | "backUrl") {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/*";
-    input.onchange = async () => {
-      const file = input.files?.[0];
-      if (!file || !editing) return;
+      setState(normalized);
       try {
-        const data = await file.arrayBuffer();
-        await OBR.assets.uploadImages(
-          [buildImageUpload(new File([data], file.name, { type: file.type })).build()],
+        await saveDeck(normalized);
+        return true;
+      } catch (e) {
+        showToast(e instanceof Error ? e.message : "Erro ao salvar metadados.");
+        return false;
+      }
+    },
+    [showToast]
+  );
+  const updateActiveDeck = useCallback(
+    async (updater: (deck: CardDeck) => CardDeck) => {
+      const now = Date.now();
+      const next: DeckState = {
+        ...state,
+        decks: state.decks.map((d) =>
+          d.id === activeDeck.id ? { ...updater(d), updatedAt: now } : d
+        ),
+      };
+      return persist(next);
+    },
+    [state, activeDeck.id, persist]
+  );
+
+  const setCardVisibility = useCallback(
+    async (cardId: string, visibility: CardVisibility) => {
+      const wasRevealed = activeDeck.revealedCardId === cardId;
+      const ok = await updateActiveDeck((deck) => ({
+        ...deck,
+        revealedCardId:
+          visibility === "REVEALED"
+            ? cardId
+            : wasRevealed
+              ? null
+              : deck.revealedCardId,
+        cards: deck.cards.map((c) => {
+          if (c.id === cardId) return { ...c, visibility };
+          if (visibility === "REVEALED" && c.visibility === "REVEALED") {
+            return { ...c, visibility: "AVAILABLE" as CardVisibility };
+          }
+          return c;
+        }),
+      }));
+      if (ok) {
+        if (visibility === "REVEALED") {
+          await broadcastReveal(cardId);
+        } else if (wasRevealed) {
+          await broadcastReveal(null);
+        }
+      }
+    },
+    [activeDeck.revealedCardId, updateActiveDeck]
+  );
+
+  const saveCardForm = useCallback(async () => {
+    if (!cardModal) return;
+    const name = cardModal.name.trim();
+    if (!name) {
+      showToast("Informe o nome da carta.");
+      return;
+    }
+
+    const cardId = cardModal.id ?? makeId("card");
+    const isNew = !cardModal.id;
+    const targetVisibility = cardModal.visibility;
+
+    const ok = await updateActiveDeck((deck) => {
+      const existing = deck.cards.find((c) => c.id === cardId);
+      const nextCard: Card = {
+        id: cardId,
+        name,
+        category: cardModal.category.trim(),
+        frontUrl: cardModal.frontUrl.trim(),
+        backUrl: cardModal.backUrl.trim(),
+        description: cardModal.description.trim(),
+        visibility: targetVisibility,
+        selected: existing?.selected ?? false,
+        createdAt: existing?.createdAt ?? Date.now(),
+      };
+
+      const baseCards = isNew
+        ? [...deck.cards, nextCard]
+        : deck.cards.map((c) => (c.id === cardId ? nextCard : c));
+
+      const finalCards =
+        targetVisibility === "REVEALED"
+          ? baseCards.map((c) =>
+              c.id !== cardId && c.visibility === "REVEALED"
+                ? { ...c, visibility: "AVAILABLE" as CardVisibility }
+                : c
+            )
+          : baseCards;
+
+      const nextRevealedId =
+        targetVisibility === "REVEALED"
+          ? cardId
+          : deck.revealedCardId === cardId
+            ? null
+            : deck.revealedCardId;
+
+      return {
+        ...deck,
+        revealedCardId: nextRevealedId,
+        cards: finalCards,
+      };
+    });
+
+    if (ok) {
+      if (targetVisibility === "REVEALED") {
+        await broadcastReveal(cardId);
+      } else if (activeDeck.revealedCardId === cardId) {
+        await broadcastReveal(null);
+      }
+      setCardModal(null);
+      showToast(isNew ? "Carta adicionada." : "Carta atualizada.");
+    }
+  }, [cardModal, activeDeck.revealedCardId, updateActiveDeck, showToast]);
+
+  const deleteCard = useCallback(
+    async (cardId: string) => {
+      const wasRevealed = activeDeck.revealedCardId === cardId;
+      const ok = await updateActiveDeck((deck) => ({
+        ...deck,
+        revealedCardId: wasRevealed ? null : deck.revealedCardId,
+        cards: deck.cards.filter((c) => c.id !== cardId),
+      }));
+      if (ok) {
+        if (wasRevealed) await broadcastReveal(null);
+        setCardModal(null);
+        showToast("Carta removida.");
+      }
+    },
+    [activeDeck.revealedCardId, updateActiveDeck, showToast]
+  );
+
+  const drawRandomCard = useCallback(async () => {
+    const pool = activeDeck.cards.filter(
+      (c) => c.visibility === "HIDDEN" || c.visibility === "AVAILABLE"
+    );
+    if (pool.length === 0) {
+      showToast("Nenhuma carta dispon\u00edvel ou oculta para sortear.");
+      return;
+    }
+    const picked = pool[Math.floor(Math.random() * pool.length)];
+    await setCardVisibility(picked.id, "REVEALED");
+    showToast(`Carta revelada: ${picked.name}`);
+  }, [activeDeck.cards, setCardVisibility, showToast]);
+
+  const shuffleDeck = useCallback(async () => {
+    if (activeDeck.cards.length < 2) return;
+    const copy = [...activeDeck.cards];
+    for (let i = copy.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [copy[i], copy[j]] = [copy[j], copy[i]];
+    }
+    const ok = await updateActiveDeck((deck) => ({ ...deck, cards: copy }));
+    if (ok) showToast("Baralho embaralhado.");
+  }, [activeDeck.cards, updateActiveDeck, showToast]);
+
+  const chooseAsset = useCallback(
+    async (field: "frontUrl" | "backUrl") => {
+      if (!OBR.isAvailable) {
+        showToast("Assets do Owlbear Rodeo dispon\u00edveis apenas dentro da mesa.");
+        return;
+      }
+      try {
+        const downloads = await OBR.assets.downloadImages(
+          false,
+          undefined,
           "ATTACHMENT"
         );
-        setStatus(`Imagem enviada. Abra a Biblioteca para aplicá-la à ${field === "frontUrl" ? "frente" : "ao verso"}.`);
+        const url = downloads[0]?.image.url;
+        if (!url) return;
+        setCardModal((prev) => (prev ? { ...prev, [field]: url } : prev));
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Falha ao enviar imagem.");
+        showToast(e instanceof Error ? e.message : "Erro ao selecionar asset.");
       }
+    },
+    [showToast]
+  );
+
+  const exportJson = useCallback(() => {
+    const blob = new Blob([JSON.stringify(state, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `sistema-cartas-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast("Backup JSON exportado.");
+  }, [state, showToast]);
+
+  const importJson = useCallback(
+    async (file: File) => {
+      try {
+        const text = await file.text();
+        const parsed = JSON.parse(text) as unknown;
+        let nextState: DeckState;
+        if (Array.isArray(parsed)) {
+          nextState = normalizeDeckState({
+            ...state,
+            decks: state.decks.map((d) =>
+              d.id === activeDeck.id ? { ...d, cards: parsed } : d
+            ),
+          });
+        } else if (
+          parsed &&
+          typeof parsed === "object" &&
+          "cards" in parsed &&
+          !("decks" in parsed)
+        ) {
+          const single = parsed as Partial<CardDeck>;
+          const id = makeId("deck");
+          nextState = normalizeDeckState({
+            ...state,
+            activeDeckId: id,
+            decks: [
+              ...state.decks,
+              {
+                id,
+                name: single.name || "Baralho Importado",
+                cards: Array.isArray(single.cards) ? single.cards : [],
+                revealedCardId: null,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+              },
+            ],
+          });
+        } else {
+          nextState = normalizeDeckState(parsed);
+        }
+        const ok = await persist(nextState);
+        if (ok) showToast("JSON importado com sucesso.");
+      } catch (e) {
+        showToast(e instanceof Error ? e.message : "Arquivo JSON inv\u00e1lido.");
+      }
+    },
+    [state, activeDeck.id, persist, showToast]
+  );
+
+  const switchDeck = useCallback(
+    async (deckId: string) => {
+      if (deckId === state.activeDeckId) return;
+      const ok = await persist({ ...state, activeDeckId: deckId });
+      if (ok) {
+        const target = state.decks.find((d) => d.id === deckId);
+        await broadcastReveal(target?.revealedCardId ?? null);
+      }
+    },
+    [state, persist]
+  );
+
+  const createDeck = useCallback(async () => {
+    const name = newDeckName.trim();
+    if (!name) return;
+    const id = makeId("deck");
+    const now = Date.now();
+    const ok = await persist({
+      ...state,
+      activeDeckId: id,
+      decks: [
+        ...state.decks,
+        {
+          id,
+          name,
+          cards: [],
+          revealedCardId: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+    });
+    if (ok) {
+      setNewDeckName("");
+      await broadcastReveal(null);
+      showToast(`Baralho "${name}" criado.`);
+    }
+  }, [newDeckName, state, persist, showToast]);
+
+  const renameActiveDeck = useCallback(async () => {
+    const name = renameDeckName.trim();
+    if (!name) return;
+    const ok = await updateActiveDeck((deck) => ({ ...deck, name }));
+    if (ok) {
+      setRenameDeckName("");
+      showToast("Baralho renomeado.");
+    }
+  }, [renameDeckName, updateActiveDeck, showToast]);
+
+  const deleteDeck = useCallback(
+    async (deckId: string) => {
+      if (state.decks.length <= 1) {
+        showToast("Mantenha pelo menos um baralho.");
+        return;
+      }
+      const remaining = state.decks.filter((d) => d.id !== deckId);
+      const nextActive =
+        state.activeDeckId === deckId ? remaining[0].id : state.activeDeckId;
+      const ok = await persist({
+        ...state,
+        activeDeckId: nextActive,
+        decks: remaining,
+      });
+      if (ok) {
+        const target = remaining.find((d) => d.id === nextActive);
+        await broadcastReveal(target?.revealedCardId ?? null);
+        showToast("Baralho removido.");
+      }
+    },
+    [state, persist, showToast]
+  );
+
+  const setCardSize = useCallback(
+    async (cardSize: CardSize) => {
+      await persist({ ...state, cardSize });
+    },
+    [state, persist]
+  );
+  const revealedCard = useMemo(
+    () =>
+      activeDeck.cards.find(
+        (c) => c.id === activeDeck.revealedCardId && c.visibility === "REVEALED"
+      ) ??
+      activeDeck.cards.find((c) => c.visibility === "REVEALED") ??
+      null,
+    [activeDeck]
+  );
+
+  const availableCards = useMemo(
+    () => activeDeck.cards.filter((c) => c.visibility === "AVAILABLE"),
+    [activeDeck.cards]
+  );
+
+  const counts = useMemo(() => {
+    const map: Record<FilterMode, number> = {
+      ALL: activeDeck.cards.length,
+      REVEALED: 0,
+      AVAILABLE: 0,
+      HIDDEN: 0,
+      DISCARDED: 0,
     };
-    input.click();
-  }
+    for (const c of activeDeck.cards) {
+      map[c.visibility] += 1;
+    }
+    return map;
+  }, [activeDeck.cards]);
 
-  async function openLibraryCard(deckId: string, cardId: string) {
-    if (deckId !== activeDeck.id) await persist({ ...deck, activeDeckId: deckId });
-    setSelectedId(cardId);
-    setView("decks");
-  }
+  const filteredCards = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return activeDeck.cards.filter((c) => {
+      if (filter !== "ALL" && c.visibility !== filter) return false;
+      if (!q) return true;
+      return (
+        c.name.toLowerCase().includes(q) ||
+        c.category.toLowerCase().includes(q) ||
+        c.description.toLowerCase().includes(q)
+      );
+    });
+  }, [activeDeck.cards, filter, search]);
 
-  function handleDrop(targetId: string, sourceId: string) {
-    if (!sourceId || sourceId === targetId) return;
-    const cards = [...activeDeck.cards];
-    const from = cards.findIndex((card) => card.id === sourceId);
-    const to = cards.findIndex((card) => card.id === targetId);
-    if (from < 0 || to < 0) return;
-    const [item] = cards.splice(from, 1);
-    cards.splice(to, 0, item);
-    void persist(withActiveDeck({ cards }));
-  }
-
-  if (role === "PLAYER") {
-    return (
-      <div className="player-screen">
-        <header className="player-header"><div className="brand-emblem">✦</div><div><strong>DECK & CARDS</strong></div><span className="role-pill">JOGADOR</span></header>
-        {revealedCard ? (
-          <div className="player-reveal">
-            
-            {revealedCard.frontUrl || revealedCard.backUrl
-              ? <img src={revealedCard.frontUrl || revealedCard.backUrl} alt={revealedCard.name} />
-              : <div className="player-card-placeholder">✦</div>}
-            <div className="player-card-info"><span>{revealedCard.category}</span><h1>{revealedCard.name}</h1><p>{revealedCard.description}</p></div>
-          </div>
-        ) : (
-          <div className="player-waiting"><div className="waiting-seal">✦</div><h1>A mesa aguarda.</h1></div>
-        )}
-      </div>
-    );
-  }
+  const isGM = role === "GM";
+  const gridClass =
+    state.cardSize === "small"
+      ? "grid small"
+      : state.cardSize === "large"
+        ? "grid large"
+        : "grid";
 
   return (
-    <div className="app-shell" data-connection={obrReady ? "ready" : "connecting"}>
-      <header className="app-header">
-        <div className="brand-emblem" aria-hidden="true">✦</div>
-        <div className="brand-name">
-          <strong>DECK <span>&amp;</span> CARDS</strong>
-          
-        </div>
-        <div className="app-header-meta">
-          <span className={obrReady ? "connection-status" : "connection-status is-connecting"}><i /> {obrReady ? "Conectado à sala" : "Conectando à sala"}</span>
-          <span className="role-pill">{role === "GM" ? "MESTRE" : role === "PLAYER" ? "JOGADOR" : "CONECTANDO"}</span>
-        </div>
-      </header>
-
-      <nav className="main-nav">
-        <button className={view === "decks" ? "nav-tab active" : "nav-tab"} onClick={() => setView("decks")}><span>♜</span> Meus baralhos</button>
-        <button className={view === "library" ? "nav-tab active" : "nav-tab"} onClick={() => { setView("library"); setCategory("Todas"); }}><span>▤</span> Biblioteca</button>
-        <button className={view === "settings" ? "nav-tab active" : "nav-tab"} onClick={() => setView("settings")}><span>⚙</span> Configurações</button>
-        <div className="nav-spacer" />
-      </nav>
-
-      <section className="mobile-quickbar" aria-label="Atalhos do baralho">
-        <div className="mobile-deck-row">
-          <label className="mobile-deck-picker">
-            
+    <div className="app">
+      <header className="topbar">
+        <div className="topbar-left">
+          <span className="brand">Sistema de Cartas</span>
+          <span className={`role-pill ${isGM ? "gm" : ""}`}>
+            {isGM ? "Mestre" : "Jogador"}
+          </span>
+          {isGM && (
             <select
-              value={activeDeck?.id ?? ""}
-              onChange={(event) => void selectDeck(event.target.value)}
+              className="deck-select"
+              value={activeDeck.id}
+              onChange={(e) => void switchDeck(e.target.value)}
               aria-label="Selecionar baralho"
             >
-              {deck.decks.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+              {state.decks.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name} ({d.cards.length})
+                </option>
+              ))}
             </select>
-          </label>
-          <button className="mobile-new-deck" onClick={() => void createDeck()}>＋ Novo</button>
+          )}
         </div>
-        {view === "decks" && (
-          <div className="mobile-category-strip" aria-label="Filtrar cartas por categoria">
-            <button
-              className={category === "Todas" ? "mobile-category active" : "mobile-category"}
-              onClick={() => setCategory("Todas")}
+
+        {isGM && (
+          <div className="topbar-right">
+            <span
+              className={`meta-pill ${metaBytes >= WARN_META_BYTES ? "warn" : ""}`}
+              title="Uso dos metadados da sala no Owlbear Rodeo"
             >
-              Todas <b>{totalCount}</b>
+              {(metaBytes / 1024).toFixed(1)} / 16 KB
+            </span>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => void shuffleDeck()}
+              disabled={activeDeck.cards.length < 2}
+            >
+              Embaralhar
             </button>
-            {CATEGORIES.map((name) => {
-              const count = (activeDeck?.cards ?? []).filter((card) => card.category === name).length;
-              return (
-                <button
-                  key={name}
-                  className={category === name ? "mobile-category active" : "mobile-category"}
-                  onClick={() => setCategory(name)}
-                >
-                  {name} <b>{count}</b>
-                </button>
-              );
-            })}
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => void drawRandomCard()}
+            >
+              Sortear
+            </button>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => {
+                setRenameDeckName(activeDeck.name);
+                setDecksModalOpen(true);
+              }}
+            >
+              Baralhos
+            </button>
+            <button
+              type="button"
+              className="primary"
+              onClick={() => setCardModal(emptyCardForm())}
+            >
+              + Carta
+            </button>
           </div>
         )}
-      </section>
+      </header>
 
-      {error && <div className="notice error-notice"><span>!</span>{error}<button onClick={() => setError("")}>×</button></div>}
-      {status && <div className="notice status-notice">{status}</div>}
+      <main className="main">
+        {!ready ? (
+          <div className="empty-box">Conectando ao Owlbear Rodeo...</div>
+        ) : !isGM ? (
+          <div className="player-stage">
+            {revealedCard && (
+              <section className="player-revealed">
+                {revealedCard.frontUrl ? (
+                  <img src={revealedCard.frontUrl} alt={revealedCard.name} />
+                ) : (
+                  <div className="card-placeholder" style={{ height: 220 }}>
+                    Sem imagem
+                  </div>
+                )}
+                <h2>{revealedCard.name}</h2>
+                {revealedCard.category && (
+                  <p className="card-cat">{revealedCard.category}</p>
+                )}
+                {revealedCard.description && <p>{revealedCard.description}</p>}
+              </section>
+            )}
 
-      <div className="workspace">
-        <aside className="sidebar">
-          <div className="side-title"><span>SEUS BARALHOS</span><button onClick={() => void createDeck()} title="Criar baralho">＋ NOVO</button></div>
-          <div className="deck-list">
-            {deck.decks.map((item, index) => (
-              <div key={item.id} className={item.id === activeDeck.id ? "deck-entry selected" : "deck-entry"}>
-                <button className="deck-entry-main" onClick={() => void selectDeck(item.id)}>
-                  <span className="deck-thumb">{item.cards[0]?.frontUrl ? <img src={item.cards[0].frontUrl} alt="" /> : <i>✦</i>}</span>
-                  <span className="deck-entry-copy"><strong>{item.name}</strong><small>{item.cards.length} {item.cards.length === 1 ? "carta" : "cartas"}</small></span>
-                  <span className="deck-index">{String(index + 1).padStart(2, "0")}</span>
-                </button>
-                {deck.decks.length > 1 && <button className="deck-delete" onClick={() => void deleteDeck(item)} aria-label={`Excluir ${item.name}`}>×</button>}
+            {availableCards.length > 0 && (
+              <section>
+                <div className={gridClass}>
+                  {availableCards.map((card) => (
+                    <article
+                      key={card.id}
+                      className="card-tile"
+                      onClick={() => setPreviewCard(card)}
+                      style={{ cursor: "pointer" }}
+                    >
+                      <div className="card-media">
+                        {card.frontUrl || card.backUrl ? (
+                          <img
+                            src={card.frontUrl || card.backUrl}
+                            alt={card.name}
+                          />
+                        ) : (
+                          <div className="card-placeholder">Carta</div>
+                        )}
+                      </div>
+                      <div className="card-body">
+                        <div className="card-title">{card.name}</div>
+                        {card.category && (
+                          <div className="card-cat">{card.category}</div>
+                        )}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {!revealedCard && availableCards.length === 0 && (
+              <div className="empty-box">
+                Nenhuma carta revelada ou dispon\u00edvel no momento.
               </div>
-            ))}
+            )}
           </div>
+        ) : (
+          <>
+            {revealedCard && (
+              <section className="spotlight">
+                {revealedCard.frontUrl ? (
+                  <img
+                    className="spotlight-thumb"
+                    src={revealedCard.frontUrl}
+                    alt={revealedCard.name}
+                  />
+                ) : (
+                  <div className="spotlight-thumb card-placeholder">-</div>
+                )}
+                <div className="spotlight-info">
+                  <div className="spotlight-title">
+                    Revelada: {revealedCard.name}
+                  </div>
+                  <div className="spotlight-sub">
+                    {revealedCard.category || "Sem categoria"}
+                    {revealedCard.description
+                      ? ` \u2022 ${revealedCard.description}`
+                      : ""}
+                  </div>
+                </div>
+                <div className="row">
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() =>
+                      void setCardVisibility(revealedCard.id, "AVAILABLE")
+                    }
+                  >
+                    Ocultar
+                  </button>
+                  <button
+                    type="button"
+                    className="danger"
+                    onClick={() =>
+                      void setCardVisibility(revealedCard.id, "DISCARDED")
+                    }
+                  >
+                    Descartar
+                  </button>
+                </div>
+              </section>
+            )}
 
-          <div className="side-divider" />
-          <div className="side-title category-title"><span>CATEGORIAS</span><small>{totalCount} TOTAL</small></div>
-          <div className="category-list">
-            <button className={category === "Todas" ? "category-option active" : "category-option"} onClick={() => setCategory("Todas")}><span>✧ Todas as cartas</span><b>{totalCount}</b></button>
-            {CATEGORIES.map((name) => {
-              const count = activeDeck.cards.filter((card) => card.category === name).length;
-              return <button key={name} className={category === name ? "category-option active" : "category-option"} onClick={() => { setCategory(name); setView("decks"); }}><span>{name}</span><b>{count}</b></button>;
-            })}
-          </div>
-
-          <div className="sidebar-bottom">
-            <div className="mini-card-fan"><i /><i /><i /><i /><i /></div>
-            <div><strong>{availableCount} CARTAS NA PILHA</strong><small>{hiddenCount} ocultas • {discardedCount} descartadas</small></div>
-          </div>
-        </aside>
-
-        <main className="main-stage">
-          {view === "settings" ? (
-            <section className="settings-view">
-              
-              <h1>Configurações da coleção</h1>
-              
-              <div className="settings-grid">
-                <article className="setting-card"><span className="setting-icon">▤</span><h2>Tamanho das cartas</h2><div className="size-options"><button className={deck.cardSize === "small" ? "chosen" : ""} onClick={() => void persist({ ...deck, cardSize: "small" })}>Pequena</button><button className={deck.cardSize === "medium" ? "chosen" : ""} onClick={() => void persist({ ...deck, cardSize: "medium" })}>Média</button><button className={deck.cardSize === "large" ? "chosen" : ""} onClick={() => void persist({ ...deck, cardSize: "large" })}>Grande</button></div></article>
-                <article className="setting-card"><span className="setting-icon">⇅</span><h2>Importar e exportar</h2><div className="setting-actions"><button onClick={() => void importDeck()}>Importar coleção</button><button className="gold-button" onClick={exportDeck}>Exportar coleção</button></div></article>
-                <article className="setting-card"><span className="setting-icon">♜</span><h2>Espaço da sala</h2><div className="storage-meter"><span style={{ width: `${Math.min(100, (new TextEncoder().encode(JSON.stringify(deck)).length / (16 * 1024)) * 100)}%` }} /></div><small>{new TextEncoder().encode(JSON.stringify(deck)).length.toLocaleString("pt-BR")} bytes de 16 KB usados nesta coleção</small></article>
-                <article className="setting-card"><span className="setting-icon">✦</span><h2>Baralhos da sala</h2><p>{deck.decks.length} baralhos • {deck.decks.reduce((sum, item) => sum + item.cards.length, 0)} cartas armazenadas.</p><button onClick={() => void createDeck()}>＋ Criar novo baralho</button></article>
-              </div>
-            </section>
-          ) : view === "library" ? (
-            <section className="library-view">
-              <div className="stage-heading"><div><h1>Biblioteca de cartas</h1></div><span className="total-counter">{libraryCards.length} RESULTADOS</span></div>
-              <div className="library-tools"><label className="search-box"><span>⌕</span><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar nome ou descrição..." /></label><select value={category} onChange={(e) => setCategory(e.target.value)}><option value="Todas">Todas as categorias</option>{CATEGORIES.map((item) => <option key={item}>{item}</option>)}</select></div>
-              <div className="library-grid">
-                {libraryCards.length === 0 && <div className="empty-library">Nenhuma carta corresponde a esta busca.</div>}
-                {libraryCards.map(({ card, deckId, deckName }) => (
-                  <button key={`${deckId}-${card.id}`} className="library-card" onClick={() => void openLibraryCard(deckId, card.id)}>
-                    <span className="library-art">{cardImage(card) ? <img src={cardImage(card)} alt="" /> : <i>✦</i>}</span>
-                    <strong>{card.name}</strong><small>{deckName} • {card.category}</small>
+            <section className="toolbar">
+              <div className="filters">
+                {(
+                  [
+                    ["ALL", "Todas"],
+                    ["REVEALED", "Revelada"],
+                    ["AVAILABLE", "Dispon\u00edveis"],
+                    ["HIDDEN", "Ocultas"],
+                    ["DISCARDED", "Descartadas"],
+                  ] as const
+                ).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    className={`chip ${filter === key ? "active" : ""}`}
+                    onClick={() => setFilter(key)}
+                  >
+                    {label} ({counts[key]})
                   </button>
                 ))}
               </div>
+
+              <div className="toolbar-right">
+                <input
+                  type="search"
+                  className="search-input"
+                  placeholder="Buscar carta..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+                <div className="size-group" role="group" aria-label="Tamanho">
+                  {(
+                    [
+                      ["small", "P"],
+                      ["medium", "M"],
+                      ["large", "G"],
+                    ] as const
+                  ).map(([sz, label]) => (
+                    <button
+                      key={sz}
+                      type="button"
+                      className={state.cardSize === sz ? "active" : ""}
+                      onClick={() => void setCardSize(sz)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </section>
-          ) : (
-            <>
-              <div className="stage-heading deck-stage-heading">
-                <div>
-                  
-                  <h1>{activeDeck?.name ?? "Baralho"}</h1>
-                  
-                </div>
-                <span className="total-counter">{totalCount} CARTAS</span>
+
+            {filteredCards.length === 0 ? (
+              <div className="empty-box">
+                Nenhuma carta encontrada. Clique em "+ Carta" para adicionar.
               </div>
-
-              <div className="card-toolbar">
-                <div className="toolbar-label"><span>✧</span> CARTAS DO BARALHO <small>{filteredCards.length} exibidas</small></div>
-                <div className="toolbar-tools"><label className="search-box"><span>⌕</span><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Pesquisar..." /></label><select value={category} onChange={(e) => setCategory(e.target.value)}><option value="Todas">Todas</option>{CATEGORIES.map((item) => <option key={item}>{item}</option>)}</select><button className="new-card-button" onClick={() => void createCard()}>＋ Nova carta</button></div>
-              </div>
-
-              <div className={`card-grid size-${deck.cardSize}`}>
-                {filteredCards.length === 0 && <div className="empty-library"><span>✦</span><strong>Este baralho está vazio</strong><button className="gold-button" onClick={() => void createCard()}>＋ Criar primeira carta</button></div>}
-                {filteredCards.map((card, index) => (
-                  <article
-                    key={card.id}
-                    className={selectedId === card.id ? "table-card selected" : "table-card"}
-                    draggable
-                    onDragStart={(event) => event.dataTransfer.setData("text/card-id", card.id)}
-                    onDragOver={(event) => event.preventDefault()}
-                    onDrop={(event) => handleDrop(card.id, event.dataTransfer.getData("text/card-id"))}
-                    onClick={() => setSelectedId(card.id)}
-                    onDoubleClick={() => setEditing({ ...card })}
-                  >
-                    <div className="table-card-art">
-                      {cardImage(card) ? <img src={cardImage(card)} alt="" /> : <div className="card-placeholder"><span>✦</span></div>}
-                      <span className="card-number">{String(index + 1).padStart(2, "0")}</span>
-                      <button className="card-more" onClick={(event) => { event.stopPropagation(); setSelectedId(card.id); setEditing({ ...card }); }} aria-label="Editar carta">•••</button>
-                      <div className="card-art-gradient" />
-                    </div>
-                    <div className="table-card-copy"><span>{card.category}</span><strong>{card.name}</strong><small className={`state-label state-${card.visibility.toLowerCase()}`}>{card.visibility === "HIDDEN" ? "OCULTA" : card.visibility === "DISCARDED" ? "DESCARTADA" : card.visibility === "REVEALED" ? "REVELADA" : "DISPONÍVEL"}</small></div>
-                  </article>
-                ))}
-              </div>
-
-              
-            </>
-          )}
-        </main>
-
-        {view === "decks" && (
-          <aside className={selectedCard ? "inspector has-selection" : "inspector"}>
-            {selectedCard ? (
-              <>
-                <div className="inspector-heading"><span>DETALHES DA CARTA</span><button onClick={() => setSelectedId(null)} aria-label="Fechar detalhes">×</button></div>
-                <div className="inspector-art">
-                  {cardImage(selectedCard) ? <img src={cardImage(selectedCard)} alt={selectedCard.name} /> : <div className="card-placeholder"><span>✦</span></div>}
-                </div>
-                <div className="inspector-category">{selectedCard.category}</div>
-                <h2>{selectedCard.name}</h2>
-                <p className="inspector-description">{selectedCard.description || "Esta carta ainda não possui uma descrição."}</p>
-                <div className="inspector-status"><span>ESTADO</span><b>{selectedCard.visibility === "HIDDEN" ? "Oculta" : selectedCard.visibility === "DISCARDED" ? "Descartada" : selectedCard.visibility === "REVEALED" ? "Revelada" : "Disponível"}</b></div>
-                <div className="inspector-actions"><button className="gold-button wide" onClick={() => void reveal(selectedCard)}>✦ Revelar para todos</button><button onClick={() => setEditing({ ...selectedCard })}>✎ Editar carta</button><button onClick={() => void duplicateCard(selectedCard)}>▣ Duplicar</button><button onClick={() => void discard(selectedCard)}>↘ Descartar</button><div className="inspector-row"><button onClick={() => void moveCard(selectedCard.id, -1)}>← Mover</button><button onClick={() => void moveCard(selectedCard.id, 1)}>Mover →</button></div><button className="delete-card-action" onClick={() => void deleteCard(selectedCard.id)}>Excluir carta</button></div>
-              </>
             ) : (
-              <div className="inspector-empty"><div className="inspector-seal">✦</div><h2>Selecione uma carta</h2><div className="inspection-tip"><b>DICA DA MESA</b><small>Dê um duplo clique em qualquer carta para abrir o editor completo.</small></div></div>
+              <section className={gridClass}>
+                {filteredCards.map((card) => {
+                  const isRevealed = card.visibility === "REVEALED";
+                  const imgSrc = card.frontUrl || card.backUrl;
+                  return (
+                    <article
+                      key={card.id}
+                      className={`card-tile ${isRevealed ? "revealed" : ""}`}
+                    >
+                      <div className="card-media">
+                        {imgSrc ? (
+                          <img src={imgSrc} alt={card.name} />
+                        ) : (
+                          <div className="card-placeholder">Sem imagem</div>
+                        )}
+                        <span className={`status-badge ${card.visibility}`}>
+                          {VISIBILITY_LABEL[card.visibility]}
+                        </span>
+                      </div>
+
+                      <div className="card-body">
+                        <div className="card-title">{card.name}</div>
+                        {card.category && (
+                          <div className="card-cat">{card.category}</div>
+                        )}
+                        <div className="card-actions">
+                          <button
+                            type="button"
+                            className="primary"
+                            onClick={() =>
+                              void setCardVisibility(
+                                card.id,
+                                isRevealed ? "AVAILABLE" : "REVEALED"
+                              )
+                            }
+                          >
+                            {isRevealed ? "Ocultar" : "Revelar"}
+                          </button>
+                          {card.visibility !== "AVAILABLE" && !isRevealed && (
+                            <button
+                              type="button"
+                              className="ghost"
+                              onClick={() =>
+                                void setCardVisibility(card.id, "AVAILABLE")
+                              }
+                            >
+                              Disponibilizar
+                            </button>
+                          )}
+                          {card.visibility === "AVAILABLE" && (
+                            <button
+                              type="button"
+                              className="ghost"
+                              onClick={() =>
+                                void setCardVisibility(card.id, "HIDDEN")
+                              }
+                            >
+                              Esconder
+                            </button>
+                          )}
+                          {card.visibility !== "DISCARDED" && (
+                            <button
+                              type="button"
+                              className="ghost"
+                              onClick={() =>
+                                void setCardVisibility(card.id, "DISCARDED")
+                              }
+                            >
+                              Descartar
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="ghost"
+                            onClick={() => setCardModal(emptyCardForm(card))}
+                          >
+                            Editar
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </section>
             )}
-          </aside>
+          </>
         )}
-      </div>
+      </main>
 
-      {editing && (
-        <div className="modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && setEditing(null)}>
-          <form className="editor-modal" onSubmit={(event) => { event.preventDefault(); patchCard(editing.id, editing); setEditing(null); }}>
-            <div className="modal-heading"><div><h2>Configurar carta</h2></div><button type="button" onClick={() => setEditing(null)}>×</button></div>
-            <label>Nome da carta<input value={editing.name} onChange={(event) => setEditing({ ...editing, name: event.target.value })} required /></label>
-            <label>Categoria<select value={editing.category} onChange={(event) => setEditing({ ...editing, category: event.target.value })}>{CATEGORIES.map((item) => <option key={item}>{item}</option>)}</select></label>
-            <label>Descrição<textarea rows={4} value={editing.description} onChange={(event) => setEditing({ ...editing, description: event.target.value })} /></label>
-            <div className="editor-image-row">
-              <label>Imagem da frente<input value={editing.frontUrl} onChange={(event) => setEditing({ ...editing, frontUrl: event.target.value })} placeholder="https://..." /><span><button type="button" onClick={() => void chooseAsset("frontUrl")}>Biblioteca</button><button type="button" onClick={() => void uploadFromFile("frontUrl")}>Enviar</button></span></label>
-              <label>Imagem do verso<input value={editing.backUrl} onChange={(event) => setEditing({ ...editing, backUrl: event.target.value })} placeholder="https://..." /><span><button type="button" onClick={() => void chooseAsset("backUrl")}>Biblioteca</button><button type="button" onClick={() => void uploadFromFile("backUrl")}>Enviar</button></span></label>
+      {cardModal && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setCardModal(null)}
+          role="presentation"
+        >
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>{cardModal.id ? "Editar Carta" : "Nova Carta"}</h3>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => setCardModal(null)}
+              >
+                Fechar
+              </button>
             </div>
-            <label>Estado inicial<select value={editing.visibility} onChange={(event) => setEditing({ ...editing, visibility: event.target.value as Card["visibility"] })}><option value="HIDDEN">Oculta</option><option value="AVAILABLE">Disponível</option><option value="DISCARDED">Descartada</option></select></label>
-            <div className="modal-actions"><button type="button" onClick={() => setEditing(null)}>Cancelar</button><button className="gold-button" type="submit">Salvar carta</button></div>
-          </form>
-        </div>
-      )}
 
-      {revealedCard && (
-        <div className="reveal-backdrop">
-          <div className="reveal-card">
-            <button className="close-reveal" onClick={() => void hideReveal()} aria-label="Fechar">×</button>
-            <div className="reveal-art">{revealedCard.frontUrl || revealedCard.backUrl ? <img src={revealedCard.frontUrl || revealedCard.backUrl} alt={revealedCard.name} /> : <div className="player-card-placeholder">✦</div>}</div>
-            <div className="reveal-info"><span>{revealedCard.category}</span><h2>{revealedCard.name}</h2>{revealedCard.description && <p>{revealedCard.description}</p>}</div>
-            
+            <div className="field">
+              <label htmlFor="card-name">Nome</label>
+              <input
+                id="card-name"
+                value={cardModal.name}
+                onChange={(e) =>
+                  setCardModal({ ...cardModal, name: e.target.value })
+                }
+                placeholder="Ex.: O Sol"
+              />
+            </div>
+
+            <div className="row">
+              <div className="field" style={{ flex: 1 }}>
+                <label htmlFor="card-category">Categoria</label>
+                <input
+                  id="card-category"
+                  value={cardModal.category}
+                  onChange={(e) =>
+                    setCardModal({ ...cardModal, category: e.target.value })
+                  }
+                  placeholder="Ex.: Arcano Maior"
+                />
+              </div>
+
+              <div className="field" style={{ flex: 1 }}>
+                <label htmlFor="card-visibility">Visibilidade</label>
+                <select
+                  id="card-visibility"
+                  value={cardModal.visibility}
+                  onChange={(e) =>
+                    setCardModal({
+                      ...cardModal,
+                      visibility: e.target.value as CardVisibility,
+                    })
+                  }
+                >
+                  <option value="HIDDEN">Oculta</option>
+                  <option value="AVAILABLE">Dispon\u00edvel</option>
+                  <option value="REVEALED">Revelada</option>
+                  <option value="DISCARDED">Descartada</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="field">
+              <label htmlFor="card-front">URL da Frente</label>
+              <div className="row">
+                <input
+                  id="card-front"
+                  value={cardModal.frontUrl}
+                  onChange={(e) =>
+                    setCardModal({ ...cardModal, frontUrl: e.target.value })
+                  }
+                  placeholder="https://..."
+                />
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => void chooseAsset("frontUrl")}
+                >
+                  Asset OBR
+                </button>
+              </div>
+            </div>
+
+            <div className="field">
+              <label htmlFor="card-back">URL do Verso</label>
+              <div className="row">
+                <input
+                  id="card-back"
+                  value={cardModal.backUrl}
+                  onChange={(e) =>
+                    setCardModal({ ...cardModal, backUrl: e.target.value })
+                  }
+                  placeholder="https://..."
+                />
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => void chooseAsset("backUrl")}
+                >
+                  Asset OBR
+                </button>
+              </div>
+            </div>
+
+            <div className="field">
+              <label htmlFor="card-desc">Descri\u00e7\u00e3o</label>
+              <textarea
+                id="card-desc"
+                rows={3}
+                value={cardModal.description}
+                onChange={(e) =>
+                  setCardModal({ ...cardModal, description: e.target.value })
+                }
+                placeholder="Texto vis\u00edvel quando a carta for revelada..."
+              />
+            </div>
+
+            <div className="modal-footer">
+              {cardModal.id && (
+                <button
+                  type="button"
+                  className="danger"
+                  onClick={() => void deleteCard(cardModal.id!)}
+                  style={{ marginRight: "auto" }}
+                >
+                  Excluir
+                </button>
+              )}
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => setCardModal(null)}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="primary"
+                onClick={() => void saveCardForm()}
+              >
+                Salvar
+              </button>
+            </div>
           </div>
         </div>
       )}
+
+      {decksModalOpen && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setDecksModalOpen(false)}
+          role="presentation"
+        >
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Gerenciar Baralhos</h3>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => setDecksModalOpen(false)}
+              >
+                Fechar
+              </button>
+            </div>
+
+            <div className="field">
+              <label>Baralhos da Sala</label>
+              {state.decks.map((d) => (
+                <div key={d.id} className="row" style={{ marginBottom: 6 }}>
+                  <button
+                    type="button"
+                    className={d.id === activeDeck.id ? "primary" : "ghost"}
+                    style={{ flex: 1, textAlign: "left" }}
+                    onClick={() => void switchDeck(d.id)}
+                  >
+                    {d.name} ({d.cards.length} cartas)
+                  </button>
+                  <button
+                    type="button"
+                    className="danger"
+                    disabled={state.decks.length <= 1}
+                    onClick={() => void deleteDeck(d.id)}
+                  >
+                    Excluir
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="field">
+              <label htmlFor="rename-deck">Renomear baralho ativo</label>
+              <div className="row">
+                <input
+                  id="rename-deck"
+                  value={renameDeckName}
+                  onChange={(e) => setRenameDeckName(e.target.value)}
+                  placeholder="Novo nome..."
+                />
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => void renameActiveDeck()}
+                >
+                  Renomear
+                </button>
+              </div>
+            </div>
+
+            <div className="field">
+              <label htmlFor="new-deck">Criar novo baralho</label>
+              <div className="row">
+                <input
+                  id="new-deck"
+                  value={newDeckName}
+                  onChange={(e) => setNewDeckName(e.target.value)}
+                  placeholder="Nome do baralho..."
+                />
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={() => void createDeck()}
+                >
+                  Criar
+                </button>
+              </div>
+            </div>
+
+            <div className="field">
+              <label>Backup JSON</label>
+              <div className="row">
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={exportJson}
+                >
+                  Exportar JSON
+                </button>
+                <label
+                  className="ghost"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    border: "1px solid var(--border)",
+                    borderRadius: 8,
+                    padding: "6px 11px",
+                    cursor: "pointer",
+                    fontSize: 13,
+                  }}
+                >
+                  Importar JSON
+                  <input
+                    type="file"
+                    accept=".json,application/json"
+                    style={{ display: "none" }}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) void importJson(file);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => setDecksModalOpen(false)}
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {previewCard && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setPreviewCard(null)}
+          role="presentation"
+        >
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>{previewCard.name}</h3>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => setPreviewCard(null)}
+              >
+                Fechar
+              </button>
+            </div>
+            {(previewCard.frontUrl || previewCard.backUrl) && (
+              <img
+                src={previewCard.frontUrl || previewCard.backUrl}
+                alt={previewCard.name}
+                style={{
+                  width: "100%",
+                  maxHeight: 340,
+                  objectFit: "contain",
+                  borderRadius: 8,
+                  marginBottom: 10,
+                }}
+              />
+            )}
+            {previewCard.category && (
+              <p className="card-cat" style={{ marginBottom: 6 }}>
+                {previewCard.category}
+              </p>
+            )}
+            {previewCard.description && <p>{previewCard.description}</p>}
+          </div>
+        </div>
+      )}
+
+      {toast && <div className="toast">{toast}</div>}
     </div>
   );
 }
+
