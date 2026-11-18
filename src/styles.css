@@ -95,7 +95,7 @@ button:disabled { opacity: .35; cursor: not-allowed; transform: none !important;
 .mini-card-fan i:nth-child(5) { transform:rotate(32deg); left:21px; }
 .main-stage { min-width:0; padding:17px 18px 16px; display:flex; flex-direction:column; background:linear-gradient(135deg,rgba(24,17,20,.54),rgba(16,13,15,.82)); }
 .stage-heading { display:flex; align-items:flex-end; justify-content:space-between; gap:14px; margin-bottom:13px; }
-.view-kicker { color:#b18a54; font-size:7px; font-weight:800; letter-spacing:.18em; }
+
 .stage-heading h1,.settings-view h1 { margin:4px 0 3px; color:#f0e2c9; font-family:Cinzel,Georgia,serif; font-size:19px; font-weight:600; letter-spacing:.035em; }
 .stage-heading p,.view-intro { margin:0; color:#998a7e; font-size:8px; }
 .total-counter { flex:0 0 auto; padding:6px 9px; border:1px solid #684d34; background:#211719; color:#c5a36f; font-family:Cinzel,Georgia,serif; font-size:8px; letter-spacing:.12em; }
@@ -243,7 +243,7 @@ button:disabled { opacity: .35; cursor: not-allowed; transform: none !important;
 .reveal-info > span { color:#c49d62; font-size:8px; letter-spacing:.17em; text-transform:uppercase; }
 .reveal-info h2 { margin:5px 0; color:#f3e2c5; font-family:Cinzel,serif; font-size:18px; }
 .reveal-info p { margin:6px 0 0; color:#b3a394; font-size:9px; line-height:1.6; }
-.reveal-footer { padding:8px 18px; border-top:1px solid #61482f; color:#c19b62; font-size:7px; font-weight:800; letter-spacing:.16em; text-align:center; }
+
 .close-reveal { position:absolute; z-index:2; top:9px; right:9px; width:27px; height:27px; border:1px solid #9b7547; border-radius:50%; background:#110d10d9; color:#efd7ad; font-size:18px; }
 .player-screen { min-height:100vh; padding:22px; background:radial-gradient(ellipse at 50% 10%,#4a2b2a,#100d10 70%); }
 .player-header { display:flex; align-items:center; gap:10px; padding-bottom:13px; border-bottom:1px solid #775333; }
@@ -252,7 +252,7 @@ button:disabled { opacity: .35; cursor: not-allowed; transform: none !important;
 .player-header span:not(.role-pill) { margin-top:3px; color:#b29161; font-size:7px; letter-spacing:.15em; }
 .player-header .role-pill { margin-left:auto; }
 .player-reveal { max-width:660px; display:flex; flex-direction:column; align-items:center; margin:30px auto; text-align:center; }
-.reveal-caption { margin-bottom:15px; color:#c69f62; font-size:8px; font-weight:800; letter-spacing:.2em; }
+
 .player-reveal > img { max-width:min(80%,430px); max-height:60vh; object-fit:contain; border:1px solid #c09a5b; box-shadow:0 20px 60px #000b; }
 .player-card-info { width:min(540px,100%); padding:14px; }
 .player-card-info span { color:#c6a063; font-size:8px; letter-spacing:.17em; text-transform:uppercase; }
@@ -440,9 +440,7 @@ button:disabled { opacity: .35; cursor: not-allowed; transform: none !important;
   line-height: 1.5;
 }
 
-.view-kicker {
-  font-size: 8px;
-}
+
 
 .total-counter {
   padding: 8px 10px;
