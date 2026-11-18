@@ -122,7 +122,7 @@ function emptyCardForm(card?: Card): CardForm {
           }
         });
 
-        unsubReveal = subscribeReveal({ (cardId) => {
+        unsubReveal = subscribeReveal(({ cardId }) => {
           setState((prev) => ({
             ...prev,
             decks: prev.decks.map((d) => {
