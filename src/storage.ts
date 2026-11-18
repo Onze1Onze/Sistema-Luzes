@@ -98,6 +98,8 @@ export async function saveDeck(deck: DeckState): Promise<void> {
   }
   await OBR.room.setMetadata({ [METADATA_KEY]: next });
 }
+export function getActiveDeck(deck: DeckState): CardDeck { return deck.decks.find((item) => item.id === deck.activeDeckId) ?? deck.decks[0]; }
+
 
 export function metadataKey(): string {
   return METADATA_KEY;
