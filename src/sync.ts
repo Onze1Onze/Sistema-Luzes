@@ -28,7 +28,7 @@ export async function broadcastReveal(cardId: string | null): Promise<void> {
 
 export function getRevealModalUrl(cardId?: string | null): string {
   const url = new URL("./modal.html", window.location.href);
-  url.searchParams.set("v", "2.1.0");
+  url.searchParams.set("v", "2.1.1");
   if (cardId) {
     url.searchParams.set("cardId", cardId);
   }
