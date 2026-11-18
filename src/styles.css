@@ -123,3 +123,11 @@ textarea { resize: vertical; min-height: 76px; }
 @media (max-width: 640px) {
   .player-revealed { grid-template-columns: 1fr; }
 }
+html[data-view="modal"], html[data-view="modal"] body, html[data-view="modal"] #root, html[data-view="background"], html[data-view="background"] body, html[data-view="background"] #root { background: transparent; }
+.reveal-modal-overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(6, 8, 12, 0.72); backdrop-filter: blur(4px); }
+.reveal-modal-card { width: 100%; max-width: 440px; max-height: 92vh; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 14px; background: var(--surface); border: 1px solid rgba(226, 184, 87, 0.45); box-shadow: 0 24px 64px rgba(0, 0, 0, 0.65); }
+.reveal-modal-image { width: 100%; max-height: 58vh; object-fit: contain; border-radius: 10px; background: var(--bg); }
+.reveal-modal-meta { display: flex; flex-direction: column; gap: 6px; }
+.reveal-modal-meta h2 { margin: 0; font-size: 20px; color: var(--accent); }
+.reveal-modal-meta p { margin: 0; font-size: 14px; line-height: 1.5; color: var(--text); white-space: pre-wrap; }
+.reveal-modal-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
